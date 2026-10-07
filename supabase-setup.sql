@@ -238,3 +238,27 @@ begin
 end $$;
 drop trigger if exists limit_wallets on public.wallets;
 create trigger limit_wallets before insert on public.wallets for each row execute function public.limit_wallets();
+
+-- ===== Part 7: Connect Coinbase (read-only OAuth). Tokens live encrypted in Supabase Vault; only the server can touch them. =====
+create or replace function public.cb_token_get(p_user uuid) returns text language sql security definer set search_path = '' stable as $$
+  select decrypted_secret from vault.decrypted_secrets where name = 'cb_' || p_user::text;
+$$;
+create or replace function public.cb_token_set(p_user uuid, p_value text) returns void language plpgsql security definer set search_path = '' as $$
+declare sid uuid;
+begin
+  select id into sid from vault.secrets where name = 'cb_' || p_user::text;
+  if sid is null then perform vault.create_secret(p_value, 'cb_' || p_user::text); else perform vault.update_secret(sid, p_value); end if;
+end $$;
+create or replace function public.cb_token_del(p_user uuid) returns void language sql security definer set search_path = '' as $$
+  delete from vault.secrets where name = 'cb_' || p_user::text;
+$$;
+revoke execute on function public.cb_token_get(uuid), public.cb_token_set(uuid, text), public.cb_token_del(uuid) from public, anon, authenticated;
+grant execute on function public.cb_token_get(uuid), public.cb_token_set(uuid, text), public.cb_token_del(uuid) to service_role;
+
+-- Deleting an account also deletes its stored Coinbase token.
+create or replace function public.delete_my_account() returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then raise exception 'Sign in first'; end if;
+  delete from vault.secrets where name = 'cb_' || auth.uid()::text;
+  delete from auth.users where id = auth.uid();
+end $$;
