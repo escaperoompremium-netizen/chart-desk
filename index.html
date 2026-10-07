@@ -83,7 +83,16 @@ button, input, select, label.btn {
 button:hover, label.btn:hover { border-color: var(--muted); }
 button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-input#pair { width: 150px; font-family: var(--mono); text-transform: uppercase; cursor: text; }
+.search { position: relative; width: 100%; max-width: 460px; margin-bottom: 10px; }
+.search svg { position: absolute; left: 12px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.search input { width: 100%; font: 14px var(--ui); padding: 11px 12px 11px 38px; border-radius: 8px; cursor: text; -webkit-appearance: none; appearance: none; }
+.search input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.search ul { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 12px 32px #0007; max-height: 340px; overflow-y: auto; }
+.search li { display: flex; align-items: baseline; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.search li b { font: 600 13px var(--mono); min-width: 64px; }
+.search li span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search li[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.search li.none { color: var(--muted); cursor: default; font-size: 13px; }
 @media (max-width: 700px) { #presets { flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 4px; } #presets button { flex: none; } }
 .sep { width: 1px; height: 22px; background: var(--line); }
 .chk { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); cursor: pointer; }
@@ -158,10 +167,14 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
   <div class="acct"><span id="acct-email"></span><button id="signout" type="button">Sign out</button></div>
 </header>
 
+<div class="search" role="combobox" aria-haspopup="listbox" aria-owns="results">
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4" stroke-linecap="round"/></svg>
+  <input id="pair" type="search" placeholder="Search 400 coins by name or symbol…" aria-label="Search coins" aria-autocomplete="list" aria-controls="results" spellcheck="false" autocomplete="off">
+  <ul id="results" role="listbox" hidden></ul>
+</div>
+<datalist id="pairs"></datalist>
 <div class="bar">
   <div class="group" id="presets"></div>
-  <input id="pair" value="BTC-USD" list="pairs" placeholder="Search coins" aria-label="Search any coin" spellcheck="false" autocomplete="off"><datalist id="pairs"></datalist>
-  <button id="go">Load</button>
   <span class="sep"></span>
   <div class="group" id="tfs"></div>
   <span class="sep"></span>
@@ -643,14 +656,12 @@ function markActive() {
 function choose(pair, tf) {
   if (pair) { state.pair = pair.toUpperCase().trim(); if (!state.pair.includes("-")) state.pair += "-USD"; }
   if (tf) state.tf = tf;
-  $("pair").value = state.pair; markActive();
+  $("pair").value = ""; closeResults(); markActive();
   try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf })); } catch {}
   load().then(() => charts.forEach(c => c.timeScale().fitContent()));
 }
 $("presets").onclick = e => e.target.dataset.p && choose(e.target.dataset.p);
 $("tfs").onclick = e => e.target.dataset.tf && choose(null, +e.target.dataset.tf);
-$("go").onclick = () => choose($("pair").value);
-$("pair").onkeydown = e => e.key === "Enter" && choose($("pair").value);
 ["o-ema20","o-ema50","o-sma200","o-bb","o-sr"].forEach(id => $(id).onchange = applyToggles);
 function schedule() { clearInterval(timer); if ($("auto").checked) timer = setInterval(() => !state.source.startsWith("CSV") && load(true), 60000); }
 $("auto").onchange = schedule;
@@ -665,13 +676,51 @@ $("csv").onchange = e => {
 };
 
 try { const s = JSON.parse(localStorage.getItem("chartdesk")); if (s) Object.assign(state, s); } catch {}
-fetch("https://api.exchange.coinbase.com/products").then(r => r.json()).then(list => {
-  const ids = list.filter(p => p.quote_currency === "USD" && p.status === "online" && !p.trading_disabled).map(p => p.id).sort();
-  $("pairs").innerHTML = ids.map(id => `<option value="${id}">`).join("");
-  $("pair").placeholder = `Search ${ids.length} coins`;
+/* ---------- coin search ---------- */
+let coins = PRESETS.map(id => ({ id, sym: id.split("-")[0], name: "" })), hits = [], sel = 0;
+Promise.all([
+  fetch("https://api.exchange.coinbase.com/products").then(r => r.json()),
+  fetch("https://api.exchange.coinbase.com/currencies").then(r => r.json()).catch(() => []),
+]).then(([products, currencies]) => {
+  const names = Object.fromEntries(currencies.map(c => [c.id, c.name]));
+  coins = products.filter(p => p.quote_currency === "USD" && p.status === "online" && !p.trading_disabled)
+    .map(p => ({ id: p.id, sym: p.base_currency, name: names[p.base_currency] || "" }));
+  $("pairs").innerHTML = coins.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+  $("pair").placeholder = `Search ${coins.length} coins by name or symbol…`;
 }).catch(() => {});
-$("pair").onchange = () => $("pair").value && choose($("pair").value);
-$("pair").onfocus = () => $("pair").select();
+
+function searchCoins(q) {
+  q = q.trim().toLowerCase().replace(/-usd$/, "");
+  if (!q) return coins.filter(c => PRESETS.includes(c.id)).slice(0, 8);
+  const rank = c => { const s = c.sym.toLowerCase(), n = c.name.toLowerCase();
+    return s === q ? 0 : s.startsWith(q) ? 1 : n.startsWith(q) ? 2 : n.split(/\s+/).some(w => w.startsWith(q)) ? 3 : s.includes(q) || n.includes(q) ? 4 : 9; };
+  const pop = c => { const i = PRESETS.indexOf(c.id); return i < 0 ? 99 : i; };
+  return coins.map(c => [rank(c), pop(c), c]).filter(x => x[0] < 9)
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2].sym.localeCompare(b[2].sym)).slice(0, 8).map(x => x[2]);
+}
+function showResults() {
+  hits = searchCoins($("pair").value); sel = 0;
+  $("results").innerHTML = hits.length
+    ? hits.map((c, i) => `<li role="option" id="res-${i}" data-id="${c.id}" aria-selected="${i === sel}"><b>${c.sym}</b><span>${c.name}</span></li>`).join("")
+    : `<li class="none">No coin matches "${$("pair").value.replace(/[<>&"]/g, "")}"</li>`;
+  $("results").hidden = false;
+}
+function closeResults() { $("results").hidden = true; }
+function highlight(i) {
+  sel = (i + hits.length) % hits.length;
+  [...$("results").children].forEach((li, j) => li.setAttribute("aria-selected", j === sel));
+  $("results").children[sel]?.scrollIntoView({ block: "nearest" });
+}
+$("pair").oninput = showResults;
+$("pair").onfocus = showResults;
+$("pair").onkeydown = e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); if ($("results").hidden) showResults(); else if (hits.length) highlight(sel + 1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); if (hits.length) highlight(sel - 1); }
+  else if (e.key === "Enter") { e.preventDefault(); if (hits[sel]) choose(hits[sel].id); else if ($("pair").value.trim()) choose($("pair").value); $("pair").blur(); }
+  else if (e.key === "Escape") { closeResults(); $("pair").blur(); }
+};
+$("results").onmousedown = e => { const li = e.target.closest("li[data-id]"); if (li) { e.preventDefault(); choose(li.dataset.id); $("pair").blur(); } };
+$("pair").onblur = () => setTimeout(closeResults, 100);
 let booted = false;
 function bootApp() {
   if (booted) { checkAlerts(); return; }
