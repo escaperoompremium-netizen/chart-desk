@@ -136,6 +136,37 @@ ul.wl li .pc { text-align: right; font-weight: 600; }
 .pushBox.on b::before { content: "● "; color: var(--up); }
 .pushBox button { flex: none; }
 #push-btn.cta { background: var(--accent); border-color: var(--accent); color: #fff; }
+.repeatRow { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); cursor: pointer; }
+.viewTabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.viewTabs button, .viewTabs a { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 14px; font: 600 13px var(--ui); color: var(--muted); text-decoration: none; cursor: pointer; }
+.viewTabs .on, .viewTabs button.on { background: none; color: var(--fg); border-color: transparent; border-bottom-color: var(--accent); }
+.viewTabs a { margin-left: auto; }
+.pfTiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 760px) { .pfTiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tile { padding: 14px; }
+.tile span { display: block; font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.tile b { display: block; font: 600 22px var(--mono); font-variant-numeric: tabular-nums; margin-top: 4px; overflow-wrap: anywhere; }
+.tile small { font: 12px var(--mono); }
+.pfAlloc { padding: 14px; margin-bottom: 12px; }
+.allocBar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--line); }
+.allocBar i { display: block; height: 100%; }
+.allocLegend { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font: 12px var(--mono); }
+.allocLegend li { display: flex; align-items: center; gap: 6px; }
+.allocLegend li i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.pfGrid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+@media (max-width: 960px) { .pfGrid { grid-template-columns: minmax(0, 1fr); } }
+.pfGrid .panel { padding: 14px; min-width: 0; }
+.tableWrap { overflow-x: auto; }
+table.pf { width: 100%; border-collapse: collapse; font: 12px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.pf th { text-align: right; font: 600 10px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 0 8px 8px; }
+table.pf td { text-align: right; padding: 9px 8px; border-top: 1px solid var(--line); }
+table.pf th:first-child, table.pf td:first-child { text-align: left; padding-left: 0; }
+table.pf td:last-child { padding-right: 0; }
+table.pf td b { font-weight: 600; }
+table.pf td small { display: block; color: var(--muted); font: 11px var(--ui); }
+table.pf button { padding: 3px 8px; font-size: 11px; }
+.pfForm { display: flex; flex-direction: column; gap: 10px; }
+.pfForm input { font: 14px var(--mono); padding: 9px 10px; cursor: text; }
 footer { margin-top: 16px; font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; }
 .sub { color: var(--muted); font-size: 12px; }
 .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
@@ -264,6 +295,12 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
   </div>
 </div>
 
+<nav class="viewTabs" id="view-tabs">
+  <button type="button" data-view="charts" class="on">Charts</button>
+  <button type="button" data-view="portfolio">Portfolio</button>
+  <a id="admin-link" href="admin.html" hidden>Admin</a>
+</nav>
+<div id="view-charts">
 <div class="search" role="combobox" aria-haspopup="listbox" aria-owns="results">
   <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4" stroke-linecap="round"/></svg>
   <input id="pair" type="search" placeholder="Search 400 coins by name or symbol…" aria-label="Search coins" aria-autocomplete="list" aria-controls="results" spellcheck="false" autocomplete="off">
@@ -312,11 +349,16 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
       <h2>Price alerts</h2>
       <form class="alertForm" id="al-form">
         <div class="row">
+          <select id="al-kind" aria-label="Alert type"><option value="price">Price level</option><option value="pct">24h move</option><option value="rsi">RSI</option><option value="cross">EMA 20/50 cross</option></select>
           <input id="al-coin" list="pairs" aria-label="Coin" spellcheck="false" autocomplete="off">
-          <select id="al-dir" aria-label="Condition"><option value="above">rises above</option><option value="below">falls below</option></select>
         </div>
-        <input id="al-price" inputmode="decimal" placeholder="Price in USD" aria-label="Alert price" autocomplete="off">
+        <div class="row">
+          <select id="al-dir" aria-label="Condition"><option value="above">rises above</option><option value="below">falls below</option></select>
+          <select id="al-tf" aria-label="Chart timeframe" hidden><option value="900">15m chart</option><option value="3600" selected>1h chart</option><option value="21600">6h chart</option><option value="86400">1D chart</option></select>
+        </div>
+        <input id="al-price" inputmode="decimal" placeholder="Price in USD" aria-label="Alert level" autocomplete="off">
         <button id="al-add" type="submit">Add alert</button>
+        <label class="repeatRow"><input type="checkbox" id="al-repeat"> Repeat: alert me every time this happens</label>
       </form>
       <ul class="alerts" id="al-list"></ul>
       <div class="alertMeta"><span id="al-note">Saved to your account · checked every minute</span><button id="al-perm" type="button" hidden>Turn on notifications</button></div>
@@ -338,6 +380,35 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
     </div>
   </aside>
 </div>
+
+</div>
+
+<section id="view-portfolio" hidden>
+  <div class="pfTiles">
+    <div class="panel tile"><span>Total value</span><b id="pf-total">$0.00</b></div>
+    <div class="panel tile"><span>Profit / loss</span><b id="pf-pl">—</b><small id="pf-plpct"></small></div>
+    <div class="panel tile"><span>24h change</span><b id="pf-24h">—</b><small id="pf-24hpct"></small></div>
+    <div class="panel tile"><span>Coins held</span><b id="pf-count">0</b></div>
+  </div>
+  <div class="panel pfAlloc"><h2>Allocation</h2><div class="allocBar" id="pf-bar"></div><ul class="allocLegend" id="pf-legend"></ul></div>
+  <div class="pfGrid">
+    <div class="panel">
+      <h2>Holdings</h2>
+      <div class="tableWrap"><table class="pf" id="pf-table"><thead><tr><th>Coin</th><th>Amount</th><th>Price</th><th>Value</th><th>24h</th><th>Avg buy</th><th>Profit / loss</th><th></th></tr></thead><tbody></tbody></table></div>
+      <p class="empty" id="pf-empty">No holdings yet. Add the coins you own on the right to see their live value and profit or loss.</p>
+    </div>
+    <div class="panel">
+      <h2 id="pf-form-title">Add a holding</h2>
+      <form class="pfForm" id="pf-form">
+        <label class="field">Coin<input id="pf-coin" list="pairs" spellcheck="false" autocomplete="off" placeholder="e.g. BTC"></label>
+        <label class="field">Amount you hold<input id="pf-amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 0.25"></label>
+        <label class="field">Average buy price in USD (optional)<input id="pf-cost" inputmode="decimal" autocomplete="off" placeholder="e.g. 62000"></label>
+        <button class="primary" type="submit">Save holding</button>
+        <p class="note">Saving a coin you already hold replaces its amount and buy price. Values use live Coinbase prices. This tracker doesn't connect to any exchange or wallet.</p>
+      </form>
+    </div>
+  </div>
+</section>
 
 <div id="toasts" aria-live="polite"></div>
 <footer><span>© Escape Room · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a></span><span>Market data from Coinbase. Indicators describe past price action. Not financial advice.</span></footer>
@@ -630,7 +701,29 @@ function analyse() {
 /* ---------- price alerts (saved to the account, checked while the page is open) ---------- */
 let alerts = [], lastPrices = {};
 const fromRow = r => ({ id: r.id, pair: r.pair, dir: r.direction, price: +r.price, created: Date.parse(r.created_at),
-  hit: r.hit_at ? Date.parse(r.hit_at) : null, hitPrice: r.hit_price != null ? +r.hit_price : null });
+  hit: r.hit_at ? Date.parse(r.hit_at) : null, hitPrice: r.hit_price != null ? +r.hit_price : null,
+  kind: r.kind || "price", repeat: !!r.repeat, tf: r.tf || 3600, lastHit: r.last_hit_at ? Date.parse(r.last_hit_at) : null });
+const TFNAME = { 900: "15m", 3600: "1h", 21600: "6h", 86400: "1D" };
+function alertLabel(a) {
+  const sym = a.pair.replace("-USD", ""), up = a.dir === "above", tf = TFNAME[a.tf] || "1h";
+  if (a.kind === "pct") return `${sym} ${up ? "up" : "down"} ${a.price}% in 24h`;
+  if (a.kind === "rsi") return `${sym} RSI ${up ? "≥" : "≤"} ${a.price} · ${tf}`;
+  if (a.kind === "cross") return `${sym} EMA 20 ${up ? "crosses above" : "crosses below"} 50 · ${tf}`;
+  return `${sym} ${up ? "≥" : "≤"} ${fmt(a.price)}`;
+}
+const KIND_UI = {
+  price: { dirs: ["rises above", "falls below"], ph: "Price in USD", tf: false, level: true },
+  pct: { dirs: ["rises by", "falls by"], ph: "Percent move, e.g. 5", tf: false, level: true },
+  rsi: { dirs: ["rises above", "falls below"], ph: "RSI level, e.g. 70", tf: true, level: true },
+  cross: { dirs: ["bullish: EMA 20 crosses above 50", "bearish: EMA 20 crosses below 50"], ph: "", tf: true, level: false },
+};
+function syncAlertForm() {
+  const k = KIND_UI[$("al-kind").value];
+  [...$("al-dir").options].forEach((o, i) => o.textContent = k.dirs[i]);
+  $("al-tf").hidden = !k.tf; $("al-price").hidden = !k.level; $("al-price").value = "";
+  $("al-price").placeholder = $("al-kind").value === "price" ? ((lastPrices[state.pair] ?? calc.last) ? `Now ${fmt(lastPrices[state.pair] ?? calc.last)}` : k.ph) : k.ph;
+}
+$("al-kind").onchange = syncAlertForm;
 async function loadAlerts() {
   const { data, error } = await sb.from("alerts").select("*").order("created_at");
   if (error) { $("al-note").textContent = "Couldn't load your alerts. Retrying…"; return false; }
@@ -642,9 +735,12 @@ function renderAlerts() {
   const list = alerts.slice().sort((a, b) => (a.hit ? 1 : 0) - (b.hit ? 1 : 0) || b.created - a.created);
   $("al-list").innerHTML = list.length ? list.map(a => {
     const now = lastPrices[a.pair], dist = now ? ((a.price - now) / now * 100) : null;
-    const sub = a.hit ? `Triggered ${new Date(a.hit).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} at ${fmt(a.hitPrice)}`
+    const when = t => new Date(t).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+    const sub = a.hit ? `Triggered ${when(a.hit)} at ${fmt(a.hitPrice)}`
+      : a.repeat ? `Repeats · ${a.lastHit ? "last fired " + when(a.lastHit) : "waiting"}`
+      : a.kind !== "price" ? "Checked every minute"
       : now ? `Now ${fmt(now)} · ${dist >= 0 ? "+" : ""}${dist.toFixed(2)}% away` : "Waiting for price…";
-    return `<li class="${a.hit ? "hit" : ""}"><div><b>${a.pair.replace("-USD", "")}</b> ${a.dir === "above" ? "≥" : "≤"} ${fmt(a.price)}<small>${sub}</small></div>
+    return `<li class="${a.hit ? "hit" : ""}"><div>${alertLabel(a).replace(/^(\S+)/, "<b>$1</b>")}<small>${sub}</small></div>
       ${a.hit ? `<button data-rearm="${a.id}" type="button">Re-arm</button>` : `<button data-view="${a.pair}" type="button">View</button>`}
       <button data-del="${a.id}" type="button" aria-label="Delete alert">✕</button></li>`;
   }).join("") : `<li style="display:block;border:0;padding:0"><p class="empty">No alerts yet. Pick a coin and a price to get notified when it's crossed.</p></li>`;
@@ -655,22 +751,24 @@ function renderAlerts() {
 
 function fillAlertForm() {
   $("al-coin").value = state.pair;
-  const now = lastPrices[state.pair] ?? calc.last;
-  $("al-price").placeholder = now ? `Now ${fmt(now)}` : "Price in USD";
+  if ($("al-kind").value === "price") { const now = lastPrices[state.pair] ?? calc.last; $("al-price").placeholder = now ? `Now ${fmt(now)}` : "Price in USD"; }
 }
 
 $("al-form").onsubmit = async e => {
   e.preventDefault();
-  const pair = normPair($("al-coin").value), price = parseFloat($("al-price").value.replace(/[$,\s]/g, ""));
+  const kind = $("al-kind").value, pair = normPair($("al-coin").value);
+  let price = kind === "cross" ? 1 : parseFloat($("al-price").value.replace(/[$,%\s]/g, ""));
   if (!pair) { toast("Pick a coin for the alert"); return; }
-  if (!(price > 0)) { toast("Enter a price above zero, e.g. 70000"); $("al-price").focus(); return; }
-  const dir = $("al-dir").value;
-  const { data, error } = await sb.from("alerts").insert({ pair, direction: dir, price }).select().single();
+  if (kind === "price" && !(price > 0)) { toast("Enter a price above zero, e.g. 70000"); $("al-price").focus(); return; }
+  if (kind === "pct" && !(price > 0 && price <= 1000)) { toast("Enter a percent move, e.g. 5 for 5%"); $("al-price").focus(); return; }
+  if (kind === "rsi" && !(price > 0 && price < 100)) { toast("RSI runs from 0 to 100. Try 70 for overbought or 30 for oversold."); $("al-price").focus(); return; }
+  const dir = $("al-dir").value, tf = +$("al-tf").value, repeat = $("al-repeat").checked;
+  const { data, error } = await sb.from("alerts").insert({ pair, direction: dir, price, kind, tf, repeat }).select().single();
   if (error) { toast(`Couldn't save that alert. ${/check/i.test(error.message) ? "Use a Coinbase USD pair like BTC-USD." : "Check your connection and try again."}`); return; }
   alerts.push(fromRow(data)); $("al-price").value = "";
   if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().then(renderAlerts).catch(() => {});
   unlockAudio(); renderAlerts(); checkAlerts();
-  toast(`Alert set: ${pair.replace("-USD", "")} ${dir} ${fmt(price)}`);
+  toast(`Alert set: ${alertLabel(fromRow(data))}${repeat ? " (repeats)" : ""}`);
 };
 $("al-list").onclick = async e => {
   const b = e.target.closest("button"); if (!b) return;
@@ -682,7 +780,7 @@ $("al-list").onclick = async e => {
     alerts = alerts.filter(a => a.id !== b.dataset.del);
   }
   if (b.dataset.rearm) {
-    const { error } = await sb.from("alerts").update({ hit_at: null, hit_price: null }).eq("id", b.dataset.rearm);
+    const { error } = await sb.from("alerts").update({ hit_at: null, hit_price: null, last_state: null }).eq("id", b.dataset.rearm);
     if (error) { toast("Couldn't re-arm that alert. Try again."); b.disabled = false; return; }
     const a = alerts.find(a => a.id === b.dataset.rearm); a.hit = null; a.hitPrice = null;
   }
@@ -694,8 +792,12 @@ const firedHere = new Set(); // alerts this page has already announced
 async function checkAlerts() {
   if (!user) return;
   const armedBefore = new Set(alerts.filter(a => !a.hit).map(a => a.id));
+  const lastHitBefore = Object.fromEntries(alerts.map(a => [a.id, a.lastHit]));
   await loadAlerts(); // picks up alerts added or removed on other devices, and hits marked by the server
-  for (const a of alerts) if (a.hit && armedBefore.has(a.id) && !firedHere.has(a.id)) { firedHere.add(a.id); fire(a); }
+  for (const a of alerts) {
+    if (a.hit && armedBefore.has(a.id) && !firedHere.has(a.id)) { firedHere.add(a.id); fire(a); }
+    else if (a.repeat && a.lastHit && a.id in lastHitBefore && a.lastHit !== lastHitBefore[a.id]) fire(a);
+  }
   const pairs = [...new Set(alerts.filter(a => !a.hit).map(a => a.pair))];
   const fetchPairs = state.source.startsWith("CSV") ? pairs : [...new Set([...pairs, state.pair])];
   await Promise.all(fetchPairs.map(async pair => {
@@ -707,7 +809,7 @@ async function checkAlerts() {
   let fired = false;
   for (const a of alerts) {
     const now = lastPrices[a.pair];
-    if (a.hit || now == null) continue;
+    if (a.hit || now == null || a.kind !== "price" || a.repeat) continue; // other alert types are worked out by the server
     // announce it here straight away; the server marks it as triggered and sends the push within a minute
     if ((a.dir === "above" ? now >= a.price : now <= a.price) && !firedHere.has(a.id)) { firedHere.add(a.id); fire({ ...a, hitPrice: now }); }
   }
@@ -717,7 +819,7 @@ async function checkAlerts() {
 }
 
 function fire(a) {
-  const msg = `${a.pair.replace("-USD", "")} is ${a.dir === "above" ? "above" : "below"} ${fmt(a.price)} (now ${fmt(a.hitPrice)})`;
+  const msg = `${alertLabel(a)}${a.hitPrice ? ` (now ${fmt(a.hitPrice)})` : ""}`;
   toast(`<b>Price alert</b> ${msg}`, true);
   chime(); flashTitle(msg);
   // with push on, the server's notification covers this device; otherwise show one from the page
@@ -955,7 +1057,75 @@ function renderMovers() {
   }).join("");
 }
 $("movers").onclick = e => { const b = e.target.closest("[data-p]"); if (b) choose(b.dataset.p); };
-async function refreshMarket() { await refreshStats([...new Set([...PRESETS, ...watch])]); renderMovers(); renderWatch(); }
+async function refreshMarket() { await refreshStats([...new Set([...PRESETS, ...watch, ...holdings.map(h => h.pair)])]); renderMovers(); renderWatch(); renderPortfolio(); }
+
+/* ---------- portfolio ---------- */
+let holdings = [];
+const PF_COLORS = ["var(--accent)", "var(--blue)", "var(--violet)", "var(--up)", "#f2b544", "#4fc3c9", "#f28c5a", "#9aa5b4"];
+const money = (v, sign) => (sign && v > 0 ? "+" : v < 0 ? "−" : "") + "$" + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+async function loadHoldings() {
+  const { data } = await sb.from("holdings").select("pair,amount,avg_cost").order("updated_at");
+  holdings = (data || []).map(r => ({ pair: r.pair, amount: +r.amount, cost: r.avg_cost == null ? null : +r.avg_cost }));
+  renderPortfolio();
+}
+function renderPortfolio() {
+  const rows = holdings.map(h => { const s = stats[h.pair]; const value = s ? h.amount * s.last : null;
+    return { ...h, s, value, day: s ? h.amount * (s.last - s.open) : null, pl: s && h.cost != null ? h.amount * (s.last - h.cost) : null }; })
+    .sort((a, b) => (b.value || 0) - (a.value || 0));
+  const total = rows.reduce((t, r) => t + (r.value || 0), 0);
+  const withCost = rows.filter(r => r.pl != null), basis = withCost.reduce((t, r) => t + r.amount * r.cost, 0), pl = withCost.reduce((t, r) => t + r.pl, 0);
+  const day = rows.reduce((t, r) => t + (r.day || 0), 0);
+  $("pf-total").textContent = money(total);
+  $("pf-pl").textContent = withCost.length ? money(pl, true) : "—"; $("pf-pl").className = pl >= 0 ? "upc" : "downc";
+  $("pf-plpct").textContent = withCost.length && basis ? `${pl >= 0 ? "+" : ""}${(pl / basis * 100).toFixed(2)}% on coins with a buy price` : "Add buy prices to see this";
+  $("pf-24h").textContent = rows.length ? money(day, true) : "—"; $("pf-24h").className = day >= 0 ? "upc" : "downc";
+  $("pf-24hpct").textContent = total - day > 0 ? `${day >= 0 ? "+" : ""}${(day / (total - day) * 100).toFixed(2)}%` : "";
+  $("pf-count").textContent = rows.length;
+  $("pf-empty").hidden = rows.length > 0; $("pf-table").hidden = rows.length === 0;
+  $("pf-bar").innerHTML = total ? rows.map((r, i) => `<i style="width:${(r.value || 0) / total * 100}%;background:${PF_COLORS[i % PF_COLORS.length]}" title="${r.pair.replace("-USD", "")}"></i>`).join("") : "";
+  $("pf-legend").innerHTML = total ? rows.map((r, i) => `<li><i style="background:${PF_COLORS[i % PF_COLORS.length]}"></i>${r.pair.replace("-USD", "")} ${((r.value || 0) / total * 100).toFixed(1)}%</li>`).join("") : `<li style="color:var(--muted)">Your mix of coins will show here.</li>`;
+  $("pf-table").querySelector("tbody").innerHTML = rows.map(r => {
+    const c = r.s ? (r.s.last - r.s.open) / r.s.open * 100 : null, plp = r.pl != null && r.cost ? r.pl / (r.amount * r.cost) * 100 : null;
+    return `<tr><td><b>${r.pair.replace("-USD", "")}</b><small>${coinName(r.pair)}</small></td><td>${+r.amount.toPrecision(10)}</td><td>${r.s ? fmt(r.s.last) : "—"}</td><td>${r.value != null ? money(r.value) : "—"}</td>
+      <td class="${c >= 0 ? "upc" : "downc"}">${c == null ? "—" : (c >= 0 ? "+" : "") + c.toFixed(2) + "%"}</td><td>${r.cost != null ? fmt(r.cost) : "—"}</td>
+      <td class="${r.pl >= 0 ? "upc" : "downc"}">${r.pl == null ? "—" : money(r.pl, true) + `<small>${(plp >= 0 ? "+" : "") + plp.toFixed(2)}%</small>`}</td>
+      <td><button type="button" data-edit="${r.pair}">Edit</button> <button type="button" data-rm="${r.pair}" aria-label="Remove ${r.pair}">✕</button></td></tr>`;
+  }).join("");
+}
+$("pf-form").onsubmit = async e => {
+  e.preventDefault();
+  const pair = normPair($("pf-coin").value), amount = parseFloat($("pf-amt").value.replace(/[,\s]/g, "")), costRaw = $("pf-cost").value.replace(/[$,\s]/g, "");
+  const cost = costRaw === "" ? null : parseFloat(costRaw);
+  if (!pair) { toast("Pick a coin, e.g. BTC"); $("pf-coin").focus(); return; }
+  if (!(amount > 0)) { toast("Enter how much you hold, e.g. 0.25"); $("pf-amt").focus(); return; }
+  if (cost != null && !(cost >= 0)) { toast("Enter the average buy price in USD, or leave it blank"); $("pf-cost").focus(); return; }
+  const { error } = await sb.from("holdings").upsert({ user_id: user.id, pair, amount, avg_cost: cost, updated_at: new Date().toISOString() }, { onConflict: "user_id,pair" });
+  if (error) { toast(/check/i.test(error.message) ? "Use a Coinbase USD coin like BTC or SOL." : /limit/i.test(error.message) ? "Your portfolio is full (200 coins)." : "Couldn't save that. Try again."); return; }
+  $("pf-form").reset(); $("pf-form-title").textContent = "Add a holding";
+  await loadHoldings(); await refreshStats([pair]); renderPortfolio();
+  toast(`Saved ${pair.replace("-USD", "")}`);
+};
+$("pf-table").onclick = async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.edit) {
+    const h = holdings.find(x => x.pair === b.dataset.edit);
+    $("pf-coin").value = h.pair; $("pf-amt").value = h.amount; $("pf-cost").value = h.cost ?? "";
+    $("pf-form-title").textContent = `Update ${h.pair.replace("-USD", "")}`; $("pf-amt").focus();
+  }
+  if (b.dataset.rm) {
+    b.disabled = true;
+    const { error } = await sb.from("holdings").delete().eq("pair", b.dataset.rm);
+    if (error) { toast("Couldn't remove that. Try again."); b.disabled = false; return; }
+    holdings = holdings.filter(x => x.pair !== b.dataset.rm); renderPortfolio();
+  }
+};
+function showView(v) {
+  document.querySelectorAll("#view-tabs [data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
+  $("view-charts").hidden = v !== "charts"; $("view-portfolio").hidden = v !== "portfolio";
+  if (v === "portfolio") { renderPortfolio(); refreshStats(holdings.map(h => h.pair)).then(renderPortfolio); }
+  try { localStorage.setItem("er-view", v); } catch {}
+}
+$("view-tabs").onclick = e => { const b = e.target.closest("[data-view]"); if (b) showView(b.dataset.view); };
 
 /* ---------- account panel + delete account ---------- */
 function toggleAcct(open) {
@@ -1047,8 +1217,10 @@ function showApp() {
   $("auth").hidden = true; $("app").hidden = false;
   $("acct-email").textContent = user.email;
   bootApp(); syncPush();
-  loadWatch().then(() => { refreshMarket(); refreshSparks(watch); });
-  loadEmailPref();
+  Promise.all([loadWatch(), loadHoldings()]).then(() => { refreshMarket(); refreshSparks(watch); });
+  loadEmailPref(); syncAlertForm();
+  sb.rpc("is_admin").then(({ data }) => { $("admin-link").hidden = data !== true; });
+  try { if (localStorage.getItem("er-view") === "portfolio") showView("portfolio"); } catch {}
 }
 document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { setMode(b.dataset.go); $("auth-form").scrollIntoView({ behavior: "smooth", block: "center" }); $("auth-email").focus({ preventScroll: true }); });
 $("auth-tabs").onclick = e => e.target.dataset.mode && setMode(e.target.dataset.mode);
@@ -1100,7 +1272,7 @@ else sb.auth.onAuthStateChange((event, session) => {
   const was = user?.id;
   user = session?.user || null;
   if (user && authMode !== "reset") { if (was !== user.id) setTimeout(showApp); }
-  else if (!user) { alerts = []; watch = []; showAuth(); if (authMode === "reset") setMode("login"); }
+  else if (!user) { alerts = []; watch = []; holdings = []; $("admin-link").hidden = true; showAuth(); if (authMode === "reset") setMode("login"); }
 });
 </script>
 </body>

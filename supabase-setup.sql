@@ -133,3 +133,86 @@ begin
 end $$;
 revoke execute on function public.delete_my_account() from public, anon;
 grant execute on function public.delete_my_account() to authenticated;
+
+-- ===== Part 5: smarter alerts, portfolio, admin =====
+-- Alert types: price (level), pct (24h move %), rsi (RSI level), cross (EMA 20/50 crossover). Repeat = fire every time.
+alter table public.alerts
+  add column if not exists kind text not null default 'price' check (kind in ('price', 'pct', 'rsi', 'cross')),
+  add column if not exists repeat boolean not null default false,
+  add column if not exists tf integer not null default 3600 check (tf in (900, 3600, 21600, 86400)),
+  add column if not exists last_state boolean,
+  add column if not exists last_hit_at timestamptz;
+alter table public.alerts add constraint alerts_rsi_range check (kind <> 'rsi' or price < 100);
+
+-- Portfolio holdings: one row per coin per person.
+create table if not exists public.holdings (
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  pair text not null check (pair ~ '^[A-Z0-9]{1,15}-USD$'),
+  amount numeric not null check (amount > 0),
+  avg_cost numeric check (avg_cost is null or avg_cost >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, pair)
+);
+alter table public.holdings enable row level security;
+create policy "Read own holdings" on public.holdings for select to authenticated using ((select auth.uid()) = user_id);
+create policy "Add own holdings" on public.holdings for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "Change own holdings" on public.holdings for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Remove own holdings" on public.holdings for delete to authenticated using ((select auth.uid()) = user_id);
+create or replace function public.limit_holdings() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if (select count(*) from public.holdings where user_id = new.user_id) >= 200 then raise exception 'Portfolio limit reached (200 coins)'; end if;
+  return new;
+end $$;
+drop trigger if exists limit_holdings on public.holdings;
+create trigger limit_holdings before insert on public.holdings for each row execute function public.limit_holdings();
+
+-- A log of every alert that fired (written by the checker), for the admin page and future history views.
+create table if not exists public.alert_events (
+  id bigserial primary key,
+  alert_id uuid,
+  user_id uuid references auth.users (id) on delete cascade,
+  pair text, kind text, title text,
+  pushed integer not null default 0,
+  emailed boolean not null default false,
+  at timestamptz not null default now()
+);
+alter table public.alert_events enable row level security;
+create policy "Read own alert events" on public.alert_events for select to authenticated using ((select auth.uid()) = user_id);
+
+-- Admins (the site owner). No policies = invisible to everyone; checked by the functions below.
+create table if not exists public.admins (user_id uuid primary key references auth.users (id) on delete cascade);
+alter table public.admins enable row level security;
+insert into public.admins (user_id) select id from auth.users where email = 'jaidenwest001@yahoo.com' on conflict do nothing;
+
+create or replace function public.is_admin() returns boolean language sql security definer set search_path = '' stable as $$
+  select exists (select 1 from public.admins where user_id = auth.uid());
+$$;
+create or replace function public.admin_stats() returns jsonb language plpgsql security definer set search_path = '' stable as $$
+begin
+  if not exists (select 1 from public.admins where user_id = auth.uid()) then raise exception 'not_admin'; end if;
+  return jsonb_build_object(
+    'users', (select count(*) from auth.users),
+    'users_7d', (select count(*) from auth.users where created_at > now() - interval '7 days'),
+    'users_today', (select count(*) from auth.users where created_at > date_trunc('day', now())),
+    'alerts', (select count(*) from public.alerts),
+    'alerts_armed', (select count(*) from public.alerts where hit_at is null),
+    'alerts_by_kind', (select coalesce(jsonb_object_agg(kind, c), '{}'::jsonb) from (select kind, count(*) c from public.alerts group by kind) t),
+    'watchlist_rows', (select count(*) from public.watchlist),
+    'holdings_rows', (select count(*) from public.holdings),
+    'push_devices', (select count(*) from public.push_subscriptions),
+    'email_off', (select count(*) from public.notify_prefs where email = false),
+    'fired_7d', (select count(*) from public.alert_events where at > now() - interval '7 days'),
+    'pushes_7d', (select coalesce(sum(pushed), 0) from public.alert_events where at > now() - interval '7 days'),
+    'emails_7d', (select count(*) from public.alert_events where emailed and at > now() - interval '7 days'),
+    'by_day', (select coalesce(jsonb_agg(jsonb_build_object('day', d, 'fired', c, 'pushes', p, 'emails', e) order by d), '[]'::jsonb) from (
+      select date_trunc('day', at)::date d, count(*) c, coalesce(sum(pushed), 0) p, count(*) filter (where emailed) e
+      from public.alert_events where at > now() - interval '14 days' group by 1) t),
+    'recent_users', (select coalesce(jsonb_agg(jsonb_build_object('email', email, 'created', created_at, 'last_sign_in', last_sign_in_at) order by created_at desc), '[]'::jsonb) from (
+      select email, created_at, last_sign_in_at from auth.users order by created_at desc limit 15) t),
+    'top_coins', (select coalesce(jsonb_agg(jsonb_build_object('pair', pair, 'count', c) order by c desc), '[]'::jsonb) from (
+      select pair, count(*) c from (select pair from public.alerts union all select pair from public.watchlist union all select pair from public.holdings) x
+      group by pair order by c desc limit 10) t)
+  );
+end $$;
+revoke execute on function public.is_admin(), public.admin_stats() from public, anon;
+grant execute on function public.is_admin(), public.admin_stats() to authenticated;

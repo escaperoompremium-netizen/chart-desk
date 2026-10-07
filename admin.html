@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin · Escape Room Charts</title>
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@800&family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<style>
+/* Layout: owner dashboard: KPI tiles, 14-day activity bars, then recent sign-ups and popular coins side by side */
+:root { --bg: #0e1116; --panel: #151a21; --line: #232a34; --fg: #e6e9ee; --muted: #8a94a3; --accent: #e5488f; --up: #2fbf8f; --blue: #5aa9f2;
+  --brand: "Unbounded", "Manrope", system-ui, sans-serif; --ui: "Manrope", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace; color-scheme: dark; }
+@media (prefers-color-scheme: light) { :root { --bg: #f5f6f8; --panel: #fff; --line: #e1e5ea; --fg: #151a21; --muted: #5d6775; --accent: #c42a72; --up: #12936a; --blue: #2a7fd4; color-scheme: light; } }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--ui); padding: 20px 16px 40px; }
+main { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brand { font: 800 16px var(--brand); letter-spacing: .04em; text-transform: uppercase; color: var(--fg); text-decoration: none; }
+.brand span { color: var(--accent); }
+.top a { color: var(--accent); }
+h1 { font: 800 24px var(--brand); margin: 0; }
+h2 { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-width: 0; }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tile span { display: block; font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.tile b { display: block; font: 600 26px var(--mono); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile small { color: var(--muted); font-size: 12px; }
+.two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 860px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.bars { display: flex; align-items: flex-end; gap: 6px; height: 140px; padding-top: 8px; }
+.bars div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; min-width: 0; }
+.bars i { display: block; width: 100%; max-width: 28px; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
+.bars small { font: 10px var(--mono); color: var(--muted); white-space: nowrap; }
+.bars b { font: 600 10px var(--mono); }
+.legend { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+th { text-align: left; font: 600 10px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 0 8px 8px 0; }
+td { padding: 8px 8px 8px 0; border-top: 1px solid var(--line); white-space: nowrap; }
+td.n, th.n { text-align: right; }
+.kinds { display: flex; flex-wrap: wrap; gap: 8px; font: 12px var(--mono); }
+.kinds span { border: 1px solid var(--line); border-radius: 99px; padding: 3px 10px; }
+.msg { color: var(--muted); }
+.msg a { color: var(--accent); }
+button { font: 600 12px var(--ui); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><a class="brand" href="./">Escape <span>Room</span></a><span><button id="refresh" type="button" hidden>Refresh</button> <a href="./">Back to the charts</a></span></div>
+  <h1>Admin</h1>
+  <p class="msg" id="msg">Loading…</p>
+  <div id="dash" hidden>
+    <div class="tiles">
+      <div class="panel tile"><span>Users</span><b id="t-users">0</b><small id="t-users-sub"></small></div>
+      <div class="panel tile"><span>Alerts</span><b id="t-alerts">0</b><small id="t-alerts-sub"></small></div>
+      <div class="panel tile"><span>Fired (7 days)</span><b id="t-fired">0</b><small id="t-fired-sub"></small></div>
+      <div class="panel tile"><span>Push devices</span><b id="t-push">0</b><small id="t-push-sub"></small></div>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <h2>Alerts fired, last 14 days</h2>
+      <div class="bars" id="bars"></div>
+      <p class="legend" id="bars-note"></p>
+    </div>
+    <div class="two" style="margin-top:12px">
+      <div class="panel"><h2>Recent sign-ups</h2><div class="wrap"><table><thead><tr><th>Email</th><th>Joined</th><th>Last sign-in</th></tr></thead><tbody id="users"></tbody></table></div></div>
+      <div class="panel">
+        <h2>Popular coins</h2>
+        <div class="wrap"><table><thead><tr><th>Coin</th><th class="n">Alerts, watchlists &amp; holdings</th></tr></thead><tbody id="coins"></tbody></table></div>
+        <h2 style="margin-top:16px">Alerts by type</h2>
+        <div class="kinds" id="kinds"></div>
+        <h2 style="margin-top:16px">Other</h2>
+        <p class="legend" id="other" style="margin:0"></p>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const sb = supabase.createClient("https://busnludymltxjigvwcnf.supabase.co", "sb_publishable_yTE-r4M8sgQl30_MUt0kCA_zSTHI1cG");
+const n = v => Number(v || 0).toLocaleString();
+const when = t => t ? new Date(t).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—";
+const KIND = { price: "Price level", pct: "24h move", rsi: "RSI", cross: "EMA cross" };
+function cell(text, cls) { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; return td; }
+async function load() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { $("msg").innerHTML = 'Log in on the <a href="./">main site</a> first, then come back to this page.'; return; }
+  const { data: s, error } = await sb.rpc("admin_stats");
+  if (error) { $("msg").textContent = /not_admin/.test(error.message) ? "This page is only for the site owner." : "Couldn't load the stats. Try refreshing."; $("dash").hidden = true; return; }
+  $("msg").textContent = "Updated " + new Date().toLocaleTimeString([], { timeStyle: "short" }) + ". Only you can see this page.";
+  $("dash").hidden = false; $("refresh").hidden = false;
+  $("t-users").textContent = n(s.users); $("t-users-sub").textContent = `${n(s.users_today)} today · ${n(s.users_7d)} this week`;
+  $("t-alerts").textContent = n(s.alerts); $("t-alerts-sub").textContent = `${n(s.alerts_armed)} armed`;
+  $("t-fired").textContent = n(s.fired_7d); $("t-fired-sub").textContent = `${n(s.emails_7d)} emails · ${n(s.pushes_7d)} pushes`;
+  $("t-push").textContent = n(s.push_devices); $("t-push-sub").textContent = `${n(s.email_off)} turned email off`;
+  const days = []; for (let i = 13; i >= 0; i--) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i); days.push(d); }
+  const byDay = Object.fromEntries((s.by_day || []).map(r => [r.day, r]));
+  const key = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const max = Math.max(1, ...days.map(d => (byDay[key(d)] || {}).fired || 0));
+  $("bars").innerHTML = days.map(d => { const r = byDay[key(d)] || { fired: 0 }; return `<div title="${r.fired} fired"><b>${r.fired || ""}</b><i style="height:${r.fired / max * 100}%"></i><small>${d.toLocaleDateString([], { day: "numeric", month: "short" })}</small></div>`; }).join("");
+  $("bars-note").textContent = "Each bar is the number of alerts that fired that day (UTC).";
+  $("users").replaceChildren(...(s.recent_users || []).map(u => { const tr = document.createElement("tr"); tr.append(cell(u.email), cell(when(u.created)), cell(when(u.last_sign_in))); return tr; }));
+  $("coins").replaceChildren(...((s.top_coins || []).length ? s.top_coins : [{ pair: "None yet", count: "" }]).map(c => { const tr = document.createElement("tr"); tr.append(cell(c.pair.replace("-USD", "")), cell(n(c.count), "n")); return tr; }));
+  const k = s.alerts_by_kind || {};
+  $("kinds").replaceChildren(...Object.keys(KIND).map(x => { const sp = document.createElement("span"); sp.textContent = `${KIND[x]}: ${n(k[x])}`; return sp; }));
+  $("other").textContent = `${n(s.watchlist_rows)} watchlist entries · ${n(s.holdings_rows)} portfolio holdings`;
+}
+$("refresh").onclick = load;
+load();
+</script>
+</body>
+</html>
