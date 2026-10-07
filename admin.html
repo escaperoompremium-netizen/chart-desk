@@ -46,6 +46,8 @@ td.n, th.n { text-align: right; }
 .kinds span { border: 1px solid var(--line); border-radius: 99px; padding: 3px 10px; }
 .msg { color: var(--muted); }
 .msg a { color: var(--accent); }
+.tgForm { display: flex; gap: 8px; flex-wrap: wrap; }
+.tgForm input { flex: 1 1 260px; font: 13px var(--mono); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; }
 button { font: 600 12px var(--ui); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
 </style>
 </head>
@@ -76,6 +78,15 @@ button { font: 600 12px var(--ui); color: var(--fg); background: var(--panel); b
         <h2 style="margin-top:16px">Other</h2>
         <p class="legend" id="other" style="margin:0"></p>
       </div>
+    </div>
+    <div class="panel" style="margin-top:12px" id="tg-panel">
+      <h2>Current Plays · Telegram</h2>
+      <p class="legend" id="tg-status" style="margin:0 0 10px">Checking…</p>
+      <form id="tg-form" class="tgForm">
+        <input id="tg-link" placeholder="https://t.me/c/…  (link to any post in Current Plays)" autocomplete="off" spellcheck="false" aria-label="Link to a post in Current Plays">
+        <button type="submit">Connect</button>
+      </form>
+      <p class="legend" id="tg-msg" role="status"></p>
     </div>
   </div>
 </main>
@@ -109,8 +120,24 @@ async function load() {
   $("kinds").replaceChildren(...Object.keys(KIND).map(x => { const sp = document.createElement("span"); sp.textContent = `${KIND[x]}: ${n(k[x])}`; return sp; }));
   $("other").textContent = `${n(s.watchlist_rows)} watchlist entries · ${n(s.holdings_rows)} portfolio holdings`;
 }
-$("refresh").onclick = load;
-load();
+async function tgCall(action, extra) {
+  const { data, error } = await sb.functions.invoke("telegram", { body: { action, ...extra } });
+  if (error) { let j = {}; try { j = await error.context.json(); } catch {} throw new Error(j.error || "Telegram setup is unavailable right now."); }
+  return data;
+}
+async function tgStatus() {
+  try {
+    const s = await tgCall("status");
+    $("tg-status").textContent = !s.bot ? "The bot token isn't working yet. Check TELEGRAM_BOT_TOKEN in Supabase." : !s.configured ? "Bot @" + s.bot + " is ready. Make it an admin of your premium channel, then paste a link to any post in Current Plays below." : "Connected to " + (s.chat || "your channel") + (s.topic ? " (topic " + s.topic + ")" : "") + " via @" + s.bot + " · " + n(s.posts) + " plays saved · " + n(s.members) + " linked members. Paste a new link below to reconnect.";
+  } catch (e) { $("tg-status").textContent = e.message; }
+}
+$("tg-form").onsubmit = async e => {
+  e.preventDefault(); $("tg-msg").textContent = "Connecting…";
+  try { const r = await tgCall("setup", { link: $("tg-link").value }); $("tg-msg").textContent = "Connected to " + (r.title || "your channel") + ". New posts" + (r.topic ? " in that topic" : "") + " will appear in Current Plays."; $("tg-link").value = ""; tgStatus(); }
+  catch (err) { $("tg-msg").textContent = err.message; }
+};
+$("refresh").onclick = () => { load(); tgStatus(); };
+load().then(() => { if (!$("dash").hidden) tgStatus(); });
 </script>
 </body>
 </html>

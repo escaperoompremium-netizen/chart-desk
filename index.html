@@ -143,6 +143,27 @@ ul.wl li .pc { text-align: right; font-weight: 600; }
 .viewTabs button, .viewTabs a { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 14px; font: 600 13px var(--ui); color: var(--muted); text-decoration: none; cursor: pointer; }
 .viewTabs .on, .viewTabs button.on { background: none; color: var(--fg); border-color: transparent; border-bottom-color: var(--accent); }
 .viewTabs a { margin-left: auto; }
+.viewTabs { overflow-x: auto; scrollbar-width: none; }
+.viewTabs button, .viewTabs a { white-space: nowrap; }
+.plHead { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+.plHead h2 { margin: 0; font: 800 20px var(--brand); color: var(--fg); text-transform: none; letter-spacing: 0; }
+.plHead p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.plGate { max-width: 560px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.plGate h3 { margin: 0; font: 800 17px var(--brand); }
+.plGate p { margin: 0; color: var(--muted); font-size: 14px; }
+.plGate .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.plGate .row > * { flex: 1 1 180px; text-align: center; text-decoration: none; }
+.plGate a.btnLink { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 6px; padding: 11px; font: 600 14px var(--ui); color: var(--fg); }
+.plGate small { color: var(--muted); font-size: 12px; }
+.plFeed { display: flex; flex-direction: column; gap: 12px; max-width: 720px; }
+.play { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.playMeta { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.playMeta button { font-size: 11px; padding: 3px 8px; }
+.playText { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; }
+.playText a { color: var(--accent); }
+.playPics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; }
+.playPics a { display: block; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
+.playPics img { display: block; width: 100%; max-height: 380px; object-fit: contain; }
 .pfTiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
 @media (max-width: 760px) { .pfTiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .tile { padding: 14px; }
@@ -335,6 +356,7 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
   <button type="button" data-view="charts" class="on">Charts</button>
   <button type="button" data-view="heatmap">Heatmap</button>
   <button type="button" data-view="portfolio">Portfolio</button>
+  <button type="button" data-view="plays">Current Plays</button>
   <a id="admin-link" href="admin.html" hidden>Admin</a>
 </nav>
 <div id="view-charts">
@@ -477,6 +499,13 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
     </div>
     </div>
   </div>
+</section>
+
+<section id="view-plays" hidden>
+  <div class="plHead"><div><h2>Current Plays</h2><p id="pl-sub">From the Escape Room Premium Telegram channel</p></div><button id="pl-refresh" type="button" hidden>Refresh</button></div>
+  <div class="panel plGate" id="pl-gate" hidden></div>
+  <div class="plFeed" id="pl-feed"></div>
+  <p class="note">Plays are our own opinions and general information, not personal financial advice. Trading is risky and you can lose money.</p>
 </section>
 
 <div id="toasts" aria-live="polite"></div>
@@ -1558,7 +1587,9 @@ new ResizeObserver(() => renderCryptoHeatmap()).observe($("hm-crypto"));
 
 function showView(v) {
   document.querySelectorAll("#view-tabs [data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
-  $("view-charts").hidden = v !== "charts"; $("view-portfolio").hidden = v !== "portfolio"; $("view-heatmap").hidden = v !== "heatmap";
+  $("view-charts").hidden = v !== "charts"; $("view-portfolio").hidden = v !== "portfolio"; $("view-heatmap").hidden = v !== "heatmap"; $("view-plays").hidden = v !== "plays";
+  clearInterval(plTimer); clearInterval(plWait);
+  if (v === "plays") { loadPlays(); plTimer = setInterval(() => { if (!document.hidden) loadPlays(true); }, 60000); }
   clearInterval(hmTimer);
   if (v === "heatmap") { loadCryptoHeatmap(); loadFxHeatmap(); hmTimer = setInterval(loadCryptoHeatmap, 120000); }
   clearInterval(walletTimer);
@@ -1566,6 +1597,74 @@ function showView(v) {
   try { localStorage.setItem("er-view", v); } catch {}
 }
 $("view-tabs").onclick = e => { const b = e.target.closest("[data-view]"); if (b) showView(b.dataset.view); };
+
+/* ---------- current plays (premium Telegram members only) ---------- */
+let plTimer = null, plWait = null, plSig = "";
+const PL_JOIN = "https://sublaunch.com/escaperoom";
+async function plCall(action, extra) {
+  const { data, error } = await sb.functions.invoke("telegram", { body: { action, ...extra } });
+  if (error) { let j = {}; try { j = await error.context.json(); } catch {} throw new Error(j.error || "Current Plays is unavailable right now. Try again soon."); }
+  return data;
+}
+function el(tag, props, ...kids) { const n = document.createElement(tag); Object.assign(n, props || {}); n.append(...kids.filter(k => k != null)); return n; }
+function plGate(title, text, buttons, small) {
+  $("pl-feed").replaceChildren(); $("pl-refresh").hidden = true;
+  $("pl-gate").replaceChildren(el("h3", { textContent: title }), el("p", { textContent: text }), buttons && buttons.length ? el("div", { className: "row" }, ...buttons) : null, small ? el("small", { textContent: small }) : null);
+  $("pl-gate").hidden = false;
+}
+const plJoinBtn = () => el("a", { className: "btnLink", href: PL_JOIN, target: "_blank", rel: "noopener", textContent: "Join Premium" });
+function plLinkBtn(label) {
+  const b = el("button", { className: "primary", type: "button", textContent: label || "Link my Telegram" });
+  b.onclick = async () => {
+    const w = window.open("", "_blank"); b.disabled = true;
+    try {
+      const { url } = await plCall("link");
+      if (w) w.location = url; else location.href = url;
+      plGate("Finish in Telegram", "Telegram should have opened. Tap Start in the chat with our bot, then come back here. This page updates by itself.", [plLinkBtn("Open Telegram again")], "The link works for 15 minutes.");
+      clearInterval(plWait); let tries = 0;
+      plWait = setInterval(async () => { if (document.hidden) return; if (++tries > 100) { clearInterval(plWait); return; } try { const st = await plCall("status"); if (st.linked) { clearInterval(plWait); loadPlays(); } } catch {} }, 3000);
+    } catch (e) { if (w) w.close(); toast(e.message); b.disabled = false; }
+  };
+  return b;
+}
+function plLinkify(text) {
+  const p = el("p", { className: "playText" }), re = /https?:\/\/[^\s<>"]+/g; let last = 0, m;
+  while ((m = re.exec(text))) { p.append(text.slice(last, m.index)); const u = m[0].replace(/[.,!?)]+$/, ""); p.append(el("a", { href: u, target: "_blank", rel: "noopener nofollow", textContent: u })); last = m.index + u.length; re.lastIndex = last; }
+  p.append(text.slice(last)); return p;
+}
+function plRender(d) {
+  $("pl-gate").hidden = true; $("pl-refresh").hidden = false;
+  const groups = [];
+  d.posts.forEach(x => { const g = x.group && groups.find(y => y.key === x.group); if (g) g.items.push(x); else groups.push({ key: x.group || "m" + x.id, items: [x] }); });
+  if (!groups.length) { $("pl-feed").replaceChildren(el("div", { className: "panel play" }, el("p", { className: "playText", textContent: "No plays posted yet. New posts in Current Plays on Telegram show up here automatically." }))); return; }
+  $("pl-feed").replaceChildren(...groups.map(g => {
+    const items = g.items.slice().sort((a, b) => a.id - b.id), first = items[0], at = new Date(first.at);
+    const meta = el("div", { className: "playMeta" }, el("span", { textContent: at.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) + (items.some(x => x.edited) ? " · edited" : "") }));
+    if (d.admin) { const h = el("button", { type: "button", textContent: "Hide" }); h.onclick = async () => { if (!confirm("Hide this play from the website? It stays in Telegram.")) return; try { await plCall("hide", { ids: items.map(x => x.id) }); plSig = ""; loadPlays(true); } catch (e) { toast(e.message); } }; meta.append(h); }
+    const pics = items.filter(x => x.photo), text = items.map(x => x.text).filter(Boolean).join("\n\n");
+    return el("article", { className: "panel play" }, meta,
+      pics.length ? el("div", { className: "playPics" }, ...pics.map(x => el("a", { href: x.photo, target: "_blank", rel: "noopener" }, el("img", { src: x.photo, alt: "Chart for this play", loading: "lazy" })))) : null,
+      text ? plLinkify(text) : null);
+  }));
+}
+async function loadPlays(quiet) {
+  if (!quiet) { plSig = ""; if (!$("pl-feed").children.length) $("pl-feed").replaceChildren(el("p", { className: "empty", textContent: "Loading…" })); }
+  let st;
+  try { st = await plCall("status"); } catch (e) { if (!quiet) plGate("Current Plays", e.message); return; }
+  if (!st.admin && !st.configured) return plGate("Current Plays is coming soon", "This is where premium members will see our current plays.", [plJoinBtn()]);
+  if (!st.admin && !st.linked) return plGate("Premium members only", "Current Plays is only for members of our Escape Room Premium Telegram channel. Already a member? Link your Telegram so we can check, then the plays appear here.", [plLinkBtn(), plJoinBtn()], "We only use your Telegram ID to check that you're in the channel.");
+  if (!st.admin && !st.active) {
+    const again = el("button", { type: "button", textContent: "I've joined, check again" }); again.onclick = () => loadPlays();
+    return plGate("You're not in the premium channel", "Your linked Telegram" + (st.name ? ", " + st.name + "," : "") + " isn't a member of the Escape Room Premium channel. Join, then check again. If you used a different Telegram account, link that one instead.", [plJoinBtn(), again, plLinkBtn("Link a different Telegram")]);
+  }
+  $("pl-sub").textContent = st.admin && !st.configured ? "Not connected to Telegram yet. Set it up on the Admin page." : "From the Escape Room Premium Telegram channel" + (st.admin ? " · you see this as the owner" : "");
+  try {
+    const d = await plCall("plays");
+    const sig = JSON.stringify(d.posts.map(x => [x.id, x.edited, x.text && x.text.length]));
+    if (sig !== plSig || !quiet) { plSig = sig; plRender(d); }
+  } catch (e) { if (!quiet) plGate("Current Plays", e.message); }
+}
+$("pl-refresh").onclick = () => loadPlays();
 
 /* ---------- account panel + delete account ---------- */
 function toggleAcct(open) {
@@ -1661,7 +1760,8 @@ function showApp() {
   Promise.all([loadWatch(), loadHoldings(), firstChart]).then(() => { refreshMarket(); refreshSparks(watch); setTimeout(prefetchFx, 1500); });
   loadEmailPref(); syncAlertForm();
   sb.rpc("is_admin").then(({ data }) => { $("admin-link").hidden = data !== true; });
-  try { const v = localStorage.getItem("er-view"); if (v === "portfolio" || v === "heatmap") showView(v); } catch {}
+  if (location.hash === "#plays") { history.replaceState(null, "", location.pathname); showView("plays"); }
+  else try { const v = localStorage.getItem("er-view"); if (v === "portfolio" || v === "heatmap" || v === "plays") showView(v); } catch {}
 }
 document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { setMode(b.dataset.go); $("auth-form").scrollIntoView({ behavior: "smooth", block: "center" }); $("auth-email").focus({ preventScroll: true }); });
 $("auth-tabs").onclick = e => e.target.dataset.mode && setMode(e.target.dataset.mode);
