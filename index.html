@@ -620,19 +620,28 @@ const isFx = p => p.startsWith("FX:");
 const isStock = p => p.startsWith("ST:");
 const pretty = p => isFx(p) || isStock(p) ? p.slice(3) : p;
 const ST_PRESETS = ["JPM", "V", "WMT", "KO", "DIS", "BA", "XOM", "JNJ", "PG", "NKE", "MCD", "IBM"].map(x => "ST:" + x);
-let stockNote = "";
 // NYSE stocks: prices come through our own "stocks" server function (Twelve Data), which keeps the API key private and caches results
-async function getStockCandles(pair, gran) {
-  const minute = gran === 60, key = pair + "|" + (minute ? 60 : 86400), c = cacheGet(key);
-  if (c && Date.now() - c.at < (minute ? 60000 : 900000)) return c.rows;
-  const { data, error } = await sb.functions.invoke("stocks", { body: { symbol: pair.slice(3), interval: minute ? "1min" : "1day" } });
-  if (error) { let msg = "Stock data is unavailable right now."; try { msg = (await error.context.json()).error || msg; } catch {} if (c) return c.rows; throw new Error(msg); }
-  const rows = data.rows.map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));
-  if (!rows.length) throw new Error("No price data for " + pair.slice(3));
-  stockNote = data.stale ? " (cached)" : "";
-  candleCache[key] = { rows, at: Date.now() }; // memory only; the server keeps the shared cache
-  return rows;
+const stockInFlight = {};
+function fetchStock(pair, minute) {
+  const key = pair + "|" + (minute ? 60 : 86400);
+  return stockInFlight[key] = stockInFlight[key] || sb.functions.invoke("stocks", { body: { symbol: pair.slice(3), interval: minute ? "1min" : "1day" } }).then(async ({ data, error }) => {
+    if (error) { let msg = "Stock data is unavailable right now."; try { msg = (await error.context.json()).error || msg; } catch {} throw new Error(msg); }
+    const rows = data.rows.map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));
+    if (!rows.length) throw new Error("No price data for " + pair.slice(3));
+    if (minute) candleCache[key] = { rows, at: Date.now() }; else cachePut(key, { rows, at: Date.now() }); // daily history is remembered between visits
+    return rows;
+  }).finally(() => { delete stockInFlight[key]; });
 }
+async function getStockCandles(pair, gran) {
+  const minute = gran === 60, c = cacheGet(pair + "|" + (minute ? 60 : 86400));
+  if (c) { // show what we have now; fetch a fresh copy in the background when it's old
+    if (Date.now() - c.at > (minute ? 60000 : 900000)) fetchStock(pair, minute).catch(() => {});
+    return c.rows;
+  }
+  return fetchStock(pair, minute);
+}
+// Start loading a stock as soon as the pointer heads for it
+function prefetchStock(pair) { if (user && isStock(pair) && !cacheGet(pair + "|86400")) fetchStock(pair, false).catch(() => {}); }
 const FX_PRESETS = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD", "EUR/GBP", "EUR/JPY", "GBP/JPY"].map(x => "FX:" + x);
 const FXAPI = "https://api.frankfurter.dev/v1/";
 async function fetchFx(pair, since) {
@@ -705,7 +714,7 @@ async function load(quiet) {
       // minute stock data has gaps outside trading hours, so take a number of candles rather than a time span
       const raw = isStock(pair) && cfg.gran === 60 ? all.slice(-cfg.pages * 300) : all.filter(c => c.time > from);
       state.candles = cfg.group ? combine(raw, cfg.group) : raw;
-      state.source = isFx(pair) ? "European Central Bank daily rates" : isStock(pair) ? "Twelve Data · NYSE" + stockNote : "Coinbase";
+      state.source = isFx(pair) ? "European Central Bank daily rates" : isStock(pair) ? "Twelve Data · NYSE" : "Coinbase";
     }
     catch (e) {
       if (isFx(pair) || isStock(pair)) throw e;
@@ -1130,7 +1139,8 @@ function renderPresets() {
   document.querySelectorAll("#market [data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === market));
   markActive();
 }
-["pointerenter", "focusin", "touchstart"].forEach(ev => $("market").addEventListener(ev, () => prefetchFx(), { passive: true }));
+["pointerenter", "focusin", "touchstart"].forEach(ev => $("market").addEventListener(ev, () => { prefetchFx(); prefetchStock(ST_PRESETS[0]); }, { passive: true }));
+["pointerover", "focusin", "touchstart"].forEach(ev => $("presets").addEventListener(ev, e => { const b = e.target.closest("[data-p]"); if (b) prefetchStock(b.dataset.p); }, { passive: true }));
 $("market").onclick = e => { const b = e.target.closest("[data-m]"); if (!b || b.dataset.m === market) return; if (b.dataset.m === "stocks") loadStockList(); choose(b.dataset.m === "fx" ? FX_PRESETS[0] : b.dataset.m === "stocks" ? ST_PRESETS[0] : PRESETS[0]); }; // the switch follows the chart that opens
 renderPresets();
 $("tfs").innerHTML = TFS.map(([l, g]) => `<button data-tf="${g}">${l}</button>`).join("");
