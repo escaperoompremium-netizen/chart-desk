@@ -59,10 +59,61 @@ header { justify-content: space-between; }
 .headL { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; min-width: 0; }
 .acct { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); min-width: 0; }
 .acct span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
-#auth { min-height: calc(100vh - 32px); display: grid; place-items: center; padding-block: 24px; }
-.authCard { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 18px; }
-.authCard .brand svg { width: 40px; height: 40px; }
-.authCard h1 { font-size: 24px; }
+#auth { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; padding-block: 4px 24px; }
+.lnav { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lnavR { display: flex; gap: 14px; align-items: center; }
+.primary.sm { padding: 8px 14px; font-size: 13px; }
+.landing { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+@media (max-width: 880px) { .landing { grid-template-columns: minmax(0, 1fr); } }
+.hero { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.eyebrow { margin: 0; font: 600 11px var(--ui); letter-spacing: .18em; text-transform: uppercase; color: var(--accent); }
+.headline { margin: 0; font: 800 clamp(30px, 5vw, 46px)/1.08 var(--brand); letter-spacing: -.01em; text-transform: none; color: var(--fg); text-wrap: balance; }
+.headline em { font-style: normal; color: var(--accent); }
+.lede { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 60ch; }
+.heroCard { padding: 14px 14px 6px; }
+.hcTop { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-variant-numeric: tabular-nums; }
+.hcTop b { font: 800 14px var(--brand); letter-spacing: .04em; }
+.hcTop span { font: 600 18px var(--mono); }
+.hcTop small { color: var(--muted); font-size: 11px; margin-left: auto; }
+#hero-chart { height: 220px; margin-top: 6px; }
+.authSide { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.authSide h3 { margin: 0; font: 800 18px var(--brand); }
+.agree { font-size: 11px; color: var(--muted); margin: 0; }
+.agree a, .fine a, footer a, .lfoot a { color: inherit; }
+.features { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 880px) { .features { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .features { grid-template-columns: minmax(0, 1fr); } }
+.features li { border-top: 2px solid var(--accent); padding-top: 12px; }
+.features h3 { margin: 0 0 6px; font-size: 15px; }
+.features p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.lfoot { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; }
+/* watchlist, movers, account */
+.movers { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; scrollbar-width: thin; }
+.mover { flex: none; display: flex; gap: 8px; align-items: baseline; padding: 7px 11px; font-variant-numeric: tabular-nums; }
+.mover b { font: 600 12px var(--mono); }
+.mover span { font: 12px var(--mono); color: var(--muted); }
+.mover i { font: normal 600 12px var(--mono); }
+.moversLabel { flex: none; align-self: center; font: 600 10px var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.ptitle { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ptitle h2 { margin: 0; }
+.star { padding: 4px 9px; font-size: 12px; }
+.star[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+ul.wl { list-style: none; margin: 0; padding: 0; }
+ul.wl li { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto 64px; gap: 8px; align-items: center; padding: 7px 4px; border-top: 1px solid var(--line); cursor: pointer; font: 12px var(--mono); font-variant-numeric: tabular-nums; border-radius: 4px; }
+ul.wl li:first-child { border-top: 0; }
+ul.wl li:hover, ul.wl li.cur { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+ul.wl li b { font-weight: 600; }
+ul.wl li svg { width: 100%; height: 22px; }
+ul.wl li .pc { text-align: right; font-weight: 600; }
+.acctPanel { position: fixed; z-index: 30; top: calc(64px + env(safe-area-inset-top, 0px)); right: 16px; width: min(360px, calc(100vw - 32px)); padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px #0008; }
+.acctPanel h3 { margin: 0; font-size: 14px; }
+.acctPanel p { margin: 0; font-size: 12px; color: var(--muted); }
+.acctPanel .danger { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.acctPanel input { font: 13px var(--ui); padding: 8px 10px; cursor: text; }
+.btnDanger { background: var(--down); border-color: var(--down); color: #fff; }
+.btnDanger:disabled { opacity: .5; cursor: not-allowed; }
+.emailRow { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; font-size: 13px; cursor: pointer; }
+.emailRow small { display: block; color: var(--muted); font-size: 11px; }
 .pitch { color: var(--muted); margin: 0; font-size: 14px; }
 .pitch b { color: var(--fg); font-weight: 600; }
 .authBox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
@@ -147,12 +198,25 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
 </head>
 <body>
 <section id="auth" hidden>
-  <div class="authCard">
+  <nav class="lnav">
     <div class="brand">
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="7" fill="var(--accent)"/><circle cx="16" cy="13" r="5" fill="var(--bg)"/><path d="M13.6 15.5h4.8l1.6 9h-8z" fill="var(--bg)"/></svg>
       <h1>Escape <span>Room</span><small>Crypto charts</small></h1>
     </div>
-    <p class="pitch">Live charts, a plain-English technical read and price alerts for <b>400 coins</b>. Free while we're in beta, no card needed.</p>
+    <div class="lnavR"><button class="linkBtn" type="button" data-go="login">Log in</button><button class="primary sm" type="button" data-go="signup">Get started free</button></div>
+  </nav>
+  <div class="landing">
+    <div class="hero">
+      <p class="eyebrow">Free during beta · 400 coins</p>
+      <h2 class="headline">Read the crypto market in <em>plain English</em>.</h2>
+      <p class="lede">Live charts for every coin on Coinbase, an instant technical read that explains what the indicators are saying, and price alerts that reach your phone even when the site is closed.</p>
+      <div class="panel heroCard" aria-label="Live Bitcoin chart">
+        <div class="hcTop"><b>BTC</b><span id="h-price">—</span><span id="h-chg"></span><small>Live from Coinbase · hourly · last 12 days</small></div>
+        <div id="hero-chart"></div>
+      </div>
+    </div>
+    <div class="authSide">
+    <h3 id="auth-heading">Create your free account</h3>
     <form class="authBox" id="auth-form" novalidate>
       <div class="tabs" id="auth-tabs" role="tablist">
         <button type="button" data-mode="signup" class="on">Create account</button>
@@ -163,9 +227,17 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
       <button class="primary" id="auth-submit" type="submit">Create free account</button>
       <button class="linkBtn" id="auth-forgot" type="button" hidden>Forgot your password?</button>
       <p class="msg" id="auth-msg" role="status"></p>
+      <p class="agree" id="auth-agree">By creating an account you agree to the <a href="terms.html">Terms</a> and <a href="privacy.html">Privacy Policy</a>.</p>
     </form>
-    <p class="fine">Market data from Coinbase. Indicators describe past price action. Not financial advice.</p>
+    </div>
   </div>
+  <ul class="features">
+    <li><h3>Every coin, live</h3><p>Candlestick charts for 400 coins with 15-minute to daily candles, moving averages, Bollinger Bands, RSI and MACD.</p></li>
+    <li><h3>A read you can follow</h3><p>Each chart gets a bullish, neutral or bearish read with the reasons spelled out, plus nearby support and resistance.</p></li>
+    <li><h3>Alerts that find you</h3><p>Set a price and get a notification on your computer or phone the minute it's crossed, even with the site closed.</p></li>
+    <li><h3>Your watchlist</h3><p>Star the coins you follow and see their price and 24-hour move at a glance, on every device you sign in to.</p></li>
+  </ul>
+  <footer class="lfoot"><span>© Escape Room</span><span><a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · Market data from Coinbase. Not financial advice.</span></footer>
 </section>
 
 <div id="app" hidden>
@@ -177,8 +249,20 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
   </div>
   <span class="sub">Live crypto chart analyser · 400 coins · Coinbase market data · technical indicators</span>
   </div>
-  <div class="acct"><span id="acct-email"></span><button id="signout" type="button">Sign out</button></div>
+  <div class="acct"><span id="acct-email"></span><button id="acct-btn" type="button" aria-expanded="false" aria-controls="acct-panel">Account</button><button id="signout" type="button">Sign out</button></div>
 </header>
+<div class="panel acctPanel" id="acct-panel" hidden>
+  <h3>Your account</h3>
+  <p id="acct-panel-email"></p>
+  <p><a href="terms.html">Terms</a> · <a href="privacy.html">Privacy Policy</a></p>
+  <div class="danger">
+    <h3>Delete account</h3>
+    <p>This permanently deletes your account, alerts, watchlist and notification settings. It can't be undone.</p>
+    <label class="field">Type DELETE to confirm<input id="del-confirm" autocomplete="off" spellcheck="false"></label>
+    <button class="btnDanger" id="del-btn" type="button" disabled>Delete my account</button>
+    <button id="acct-close" type="button">Close</button>
+  </div>
+</div>
 
 <div class="search" role="combobox" aria-haspopup="listbox" aria-owns="results">
   <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4" stroke-linecap="round"/></svg>
@@ -186,6 +270,7 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
   <ul id="results" role="listbox" hidden></ul>
 </div>
 <datalist id="pairs"></datalist>
+<div class="movers" id="movers" aria-label="Top movers in the last 24 hours"><span class="moversLabel">Top movers 24h</span></div>
 <div class="bar">
   <div class="group" id="presets"></div>
   <span class="sep"></span>
@@ -214,7 +299,11 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
 
   <aside>
     <div class="panel">
-      <h2 id="title">—</h2>
+      <h2>Watchlist</h2>
+      <ul class="wl" id="wl"></ul>
+    </div>
+    <div class="panel">
+      <div class="ptitle"><h2 id="title">—</h2><button class="star" id="star" type="button" aria-pressed="false">☆ Watch</button></div>
       <div class="price" id="last">—</div>
       <div class="chg" id="chg"></div>
       <div class="stats" id="stats"></div>
@@ -235,6 +324,7 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
         <div><b id="push-title">Get alerts when the site is closed</b><small id="push-note">Push notifications to this device.</small></div>
         <button id="push-btn" class="cta" type="button">Turn on</button>
       </div>
+      <label class="emailRow" id="email-row" hidden><input type="checkbox" id="email-on"><span>Also email me when an alert triggers<small id="email-addr"></small></span></label>
     </div>
     <div class="panel">
       <h2>Technical read</h2>
@@ -250,7 +340,7 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
 </div>
 
 <div id="toasts" aria-live="polite"></div>
-<footer><span>© Escape Room</span><span>Market data from Coinbase. Indicators describe past price action. Not financial advice.</span></footer>
+<footer><span>© Escape Room · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a></span><span>Market data from Coinbase. Indicators describe past price action. Not financial advice.</span></footer>
 </div>
 
 <script>
@@ -737,7 +827,7 @@ function markActive() {
 function choose(pair, tf) {
   if (pair) { state.pair = pair.toUpperCase().trim(); if (!state.pair.includes("-")) state.pair += "-USD"; }
   if (tf) state.tf = tf;
-  $("pair").value = ""; closeResults(); markActive();
+  $("pair").value = ""; closeResults(); markActive(); updateStar();
   try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf })); } catch {}
   load().then(() => charts.forEach(c => c.timeScale().fitContent()));
 }
@@ -802,6 +892,105 @@ $("pair").onkeydown = e => {
 };
 $("results").onmousedown = e => { const li = e.target.closest("li[data-id]"); if (li) { e.preventDefault(); choose(li.dataset.id); $("pair").blur(); } };
 $("pair").onblur = () => setTimeout(closeResults, 100);
+/* ---------- watchlist + top movers ---------- */
+let watch = [];
+const stats = {}, sparks = {};
+const coinName = id => (coins.find(c => c.id === id) || {}).name || "";
+async function loadWatch() {
+  const { data } = await sb.from("watchlist").select("pair").order("created_at");
+  watch = (data || []).map(r => r.pair);
+  renderWatch(); updateStar();
+}
+function updateStar() {
+  const on = watch.includes(state.pair), b = $("star");
+  b.hidden = state.source.startsWith("CSV");
+  b.setAttribute("aria-pressed", on); b.textContent = on ? "★ Watching" : "☆ Watch";
+  [...$("wl").children].forEach(li => li.classList.toggle("cur", li.dataset.p === state.pair));
+}
+$("star").onclick = async () => {
+  const pair = state.pair, on = watch.includes(pair);
+  $("star").disabled = true;
+  const { error } = on ? await sb.from("watchlist").delete().eq("pair", pair) : await sb.from("watchlist").insert({ pair });
+  $("star").disabled = false;
+  if (error) { toast(/limit/i.test(error.message) ? "Your watchlist is full (100 coins)." : "Couldn't update your watchlist. Try again."); return; }
+  watch = on ? watch.filter(p => p !== pair) : [...watch, pair];
+  renderWatch(); updateStar();
+  if (!on) { refreshStats([pair]).then(renderWatch); refreshSparks([pair]); }
+};
+async function each(list, n, fn) { for (let i = 0; i < list.length; i += n) await Promise.all(list.slice(i, i + n).map(fn)); }
+async function refreshStats(pairs) {
+  await each(pairs, 6, async p => {
+    try { const r = await fetch(`https://api.exchange.coinbase.com/products/${encodeURIComponent(p)}/stats`); if (r.ok) { const t = await r.json(); if (+t.open > 0) stats[p] = { last: +t.last, open: +t.open }; } } catch {}
+  });
+}
+async function refreshSparks(pairs) {
+  await each(pairs, 4, async p => {
+    try {
+      const r = await fetch(`https://api.exchange.coinbase.com/products/${encodeURIComponent(p)}/candles?granularity=3600`);
+      if (r.ok) { const rows = await r.json(); sparks[p] = rows.slice(0, 24).map(x => x[4]).reverse(); }
+    } catch {}
+  });
+  renderWatch();
+}
+function sparkSVG(v, up) {
+  if (!v || v.length < 2) return "<svg></svg>";
+  const lo = Math.min(...v), hi = Math.max(...v), w = 100, h = 22;
+  const pts = v.map((y, i) => `${(i / (v.length - 1) * w).toFixed(1)},${(h - 2 - (hi === lo ? 0.5 : (y - lo) / (hi - lo)) * (h - 4)).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${up ? "var(--up)" : "var(--down)"}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+}
+const pct = s => s ? (s.last - s.open) / s.open * 100 : null;
+function renderWatch() {
+  if (!watch.length) { $("wl").innerHTML = `<li style="display:block;cursor:default;border:0"><p class="empty" style="margin:0">Tap <b>☆ Watch</b> on any coin to add it here.</p></li>`; return; }
+  $("wl").innerHTML = watch.map(p => {
+    const s = stats[p], c = pct(s), up = c == null || c >= 0;
+    return `<li data-p="${p}" title="${coinName(p)}" class="${p === state.pair ? "cur" : ""}"><b>${p.replace("-USD", "")}</b>${sparkSVG(sparks[p], up)}<span>${s ? fmt(s.last) : "—"}</span><span class="pc ${up ? "upc" : "downc"}">${c == null ? "" : (c >= 0 ? "+" : "") + c.toFixed(2) + "%"}</span></li>`;
+  }).join("");
+}
+$("wl").onclick = e => { const li = e.target.closest("li[data-p]"); if (li) choose(li.dataset.p); };
+function renderMovers() {
+  const list = [...new Set([...PRESETS, ...watch])].filter(p => stats[p]).sort((a, b) => Math.abs(pct(stats[b])) - Math.abs(pct(stats[a]))).slice(0, 10);
+  $("movers").innerHTML = `<span class="moversLabel">Top movers 24h</span>` + list.map(p => {
+    const c = pct(stats[p]);
+    return `<button class="mover" type="button" data-p="${p}"><b>${p.replace("-USD", "")}</b><span>${fmt(stats[p].last)}</span><i class="${c >= 0 ? "upc" : "downc"}">${c >= 0 ? "+" : ""}${c.toFixed(2)}%</i></button>`;
+  }).join("");
+}
+$("movers").onclick = e => { const b = e.target.closest("[data-p]"); if (b) choose(b.dataset.p); };
+async function refreshMarket() { await refreshStats([...new Set([...PRESETS, ...watch])]); renderMovers(); renderWatch(); }
+
+/* ---------- account panel + delete account ---------- */
+function toggleAcct(open) {
+  $("acct-panel").hidden = !open; $("acct-btn").setAttribute("aria-expanded", open);
+  if (open) { $("acct-panel-email").textContent = "Signed in as " + user.email; $("del-confirm").value = ""; $("del-btn").disabled = true; }
+}
+$("acct-btn").onclick = () => toggleAcct($("acct-panel").hidden);
+$("acct-close").onclick = () => toggleAcct(false);
+$("del-confirm").oninput = () => { $("del-btn").disabled = $("del-confirm").value.trim() !== "DELETE"; };
+$("del-btn").onclick = async () => {
+  $("del-btn").disabled = true; $("del-btn").textContent = "Deleting…";
+  try { const sub = await currentSub(); if (sub) await sub.unsubscribe(); } catch {}
+  const { error } = await sb.rpc("delete_my_account");
+  $("del-btn").textContent = "Delete my account";
+  if (error) { toast("Couldn't delete your account. Try again, or contact support@escaperoomcharts.com."); $("del-btn").disabled = false; return; }
+  toggleAcct(false); pushOn = false;
+  await sb.auth.signOut();
+  toast("Your account and all its data were deleted.");
+};
+
+/* ---------- email alerts preference ---------- */
+async function loadEmailPref() {
+  const { data: on } = await sb.from("public_settings").select("value").eq("key", "email_enabled").maybeSingle();
+  $("email-row").hidden = !(on && on.value === true);
+  if ($("email-row").hidden) return;
+  const { data } = await sb.from("notify_prefs").select("email").maybeSingle();
+  $("email-on").checked = !data || data.email !== false;
+  $("email-addr").textContent = "Sent to " + user.email;
+}
+$("email-on").onchange = async () => {
+  const { error } = await sb.from("notify_prefs").upsert({ user_id: user.id, email: $("email-on").checked }, { onConflict: "user_id" });
+  if (error) { toast("Couldn't save that setting. Try again."); $("email-on").checked = !$("email-on").checked; }
+  else toast($("email-on").checked ? "Email alerts on" : "Email alerts off");
+};
+
 let booted = false;
 function bootApp() {
   if (booted) { checkAlerts(); return; }
@@ -809,6 +998,33 @@ function bootApp() {
   charts.forEach((c, i) => { const el = [$("main"), $("rsi"), $("macd")][i]; c.applyOptions({ width: el.clientWidth, height: el.clientHeight }); });
   renderAlerts(); choose(); schedule();
   checkAlerts(); setInterval(checkAlerts, 20000);
+  setInterval(refreshMarket, 60000);
+  setInterval(() => refreshSparks(watch), 300000);
+}
+
+/* ---------- landing page live preview ---------- */
+let heroChart = null;
+async function initHero() {
+  if (heroChart) return;
+  const el = $("hero-chart");
+  heroChart = LC.createChart(el, { width: el.clientWidth, height: el.clientHeight,
+    layout: { background: { color: "transparent" }, textColor: css("--muted"), fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
+    grid: { vertLines: { visible: false }, horzLines: { color: css("--line") } },
+    rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false, timeVisible: true },
+    handleScroll: false, handleScale: false, crosshair: { horzLine: { visible: false } } });
+  const area = heroChart.addAreaSeries({ lineColor: css("--accent"), topColor: css("--accent") + "55", bottomColor: css("--accent") + "00", lineWidth: 2, priceLineVisible: false });
+  new ResizeObserver(() => heroChart.applyOptions({ width: el.clientWidth })).observe(el);
+  try {
+    const [rows, st] = await Promise.all([
+      fetch("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=3600").then(r => r.json()),
+      fetch("https://api.exchange.coinbase.com/products/BTC-USD/stats").then(r => r.json()),
+    ]);
+    area.setData(rows.map(r => ({ time: r[0], value: r[4] })).sort((a, b) => a.time - b.time));
+    heroChart.timeScale().fitContent();
+    const c = (+st.last - +st.open) / +st.open * 100;
+    $("h-price").textContent = "$" + fmt(+st.last);
+    $("h-chg").textContent = `${c >= 0 ? "+" : ""}${c.toFixed(2)}% 24h`; $("h-chg").className = c >= 0 ? "upc" : "downc";
+  } catch { $("h-price").textContent = "Live chart unavailable"; }
 }
 
 /* ---------- sign-up / log-in screens ---------- */
@@ -821,15 +1037,20 @@ function setMode(mode) {
   $("auth-pass").autocomplete = mode === "login" ? "current-password" : "new-password";
   $("auth-submit").textContent = { signup: "Create free account", login: "Log in", reset: "Save new password" }[mode];
   $("auth-forgot").hidden = mode !== "login";
+  $("auth-agree").hidden = mode !== "signup";
+  $("auth-heading").textContent = { signup: "Create your free account", login: "Welcome back", reset: "Choose a new password" }[mode];
   authMsg("");
 }
 const authMsg = (t, kind) => { $("auth-msg").textContent = t; $("auth-msg").className = "msg" + (kind ? " " + kind : ""); };
-function showAuth() { $("app").hidden = true; $("auth").hidden = false; }
+function showAuth() { $("app").hidden = true; $("auth").hidden = false; toggleAcct(false); initHero(); }
 function showApp() {
   $("auth").hidden = true; $("app").hidden = false;
   $("acct-email").textContent = user.email;
   bootApp(); syncPush();
+  loadWatch().then(() => { refreshMarket(); refreshSparks(watch); });
+  loadEmailPref();
 }
+document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { setMode(b.dataset.go); $("auth-form").scrollIntoView({ behavior: "smooth", block: "center" }); $("auth-email").focus({ preventScroll: true }); });
 $("auth-tabs").onclick = e => e.target.dataset.mode && setMode(e.target.dataset.mode);
 $("auth-forgot").onclick = async () => {
   const email = $("auth-email").value.trim();
@@ -879,7 +1100,7 @@ else sb.auth.onAuthStateChange((event, session) => {
   const was = user?.id;
   user = session?.user || null;
   if (user && authMode !== "reset") { if (was !== user.id) setTimeout(showApp); }
-  else if (!user) { alerts = []; showAuth(); if (authMode === "reset") setMode("login"); }
+  else if (!user) { alerts = []; watch = []; showAuth(); if (authMode === "reset") setMode("login"); }
 });
 </script>
 </body>

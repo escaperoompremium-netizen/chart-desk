@@ -98,3 +98,38 @@ grant execute on function public.get_cron_secret() to service_role;
 --   url := 'https://busnludymltxjigvwcnf.supabase.co/functions/v1/check-alerts',
 --   headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
 --   body := '{}'::jsonb, timeout_milliseconds := 25000) $$);
+
+-- ===== Part 4: watchlist, public settings, account deletion =====
+create table if not exists public.watchlist (
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  pair text not null check (pair ~ '^[A-Z0-9]{1,15}-USD$'),
+  created_at timestamptz not null default now(),
+  primary key (user_id, pair)
+);
+alter table public.watchlist enable row level security;
+create policy "Read own watchlist" on public.watchlist for select to authenticated using ((select auth.uid()) = user_id);
+create policy "Add to own watchlist" on public.watchlist for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "Remove from own watchlist" on public.watchlist for delete to authenticated using ((select auth.uid()) = user_id);
+create or replace function public.limit_watchlist() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if (select count(*) from public.watchlist where user_id = new.user_id) >= 100 then raise exception 'Watchlist limit reached (100 coins)'; end if;
+  return new;
+end $$;
+drop trigger if exists limit_watchlist on public.watchlist;
+create trigger limit_watchlist before insert on public.watchlist for each row execute function public.limit_watchlist();
+
+-- Settings the website may read (for example whether email alerts are switched on).
+create table if not exists public.public_settings (key text primary key, value jsonb not null);
+alter table public.public_settings enable row level security;
+create policy "Anyone can read settings" on public.public_settings for select to anon, authenticated using (true);
+insert into public.public_settings (key, value) values ('email_enabled', 'false') on conflict (key) do nothing;
+
+-- Let signed-in people delete their own account (alerts, watchlist, devices and prefs cascade).
+create or replace function public.delete_my_account() returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then raise exception 'Sign in first'; end if;
+  delete from auth.users where id = auth.uid();
+end $$;
+revoke execute on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;
