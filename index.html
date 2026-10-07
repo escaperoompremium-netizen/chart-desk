@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chart Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+/* Layout: trading-desk grid — controls bar, chart stack (price / RSI / MACD) left, analysis rail right */
+:root {
+  --bg: #0e1116; --panel: #151a21; --line: #232a34; --fg: #e6e9ee; --muted: #8a94a3;
+  --accent: #f2b544; --up: #2fbf8f; --down: #ef5a5a; --blue: #5aa9f2; --violet: #b18cf2;
+  --ui: "Manrope", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg: #f5f6f8; --panel: #ffffff; --line: #e1e5ea; --fg: #151a21; --muted: #5d6775;
+          --accent: #c98a0e; --up: #12936a; --down: #d23c3c; --blue: #2a7fd4; --violet: #7e54d6; color-scheme: light; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--ui); padding: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 14px; }
+h1 { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: -.01em; }
+h1 span { color: var(--accent); }
+.sub { color: var(--muted); font-size: 12px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.group { display: flex; gap: 4px; flex-wrap: wrap; }
+button, input, select, label.btn {
+  font: 600 12px var(--ui); color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+button:hover, label.btn:hover { border-color: var(--muted); }
+button.on { background: var(--accent); color: #111; border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input#pair { width: 110px; font-family: var(--mono); text-transform: uppercase; cursor: text; }
+.sep { width: 1px; height: 22px; background: var(--line); }
+.chk { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.chk i { width: 10px; height: 3px; display: inline-block; border-radius: 2px; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; }
+@media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.charts { padding: 8px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.legend { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 2px 4px 6px; font-variant-numeric: tabular-nums; }
+.legend b { color: var(--fg); font-weight: 600; }
+.paneLabel { font: 600 10px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 4px 4px 0; }
+#main { height: 420px; } #rsi { height: 120px; } #macd { height: 130px; }
+aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+aside .panel { padding: 14px; }
+h2 { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.price { font: 600 28px var(--mono); font-variant-numeric: tabular-nums; }
+.chg { font: 600 13px var(--mono); }
+.upc { color: var(--up); } .downc { color: var(--down); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-top: 12px; }
+.stats div { display: flex; flex-direction: column; }
+.stats span { font-size: 11px; color: var(--muted); }
+.stats b { font: 600 13px var(--mono); font-variant-numeric: tabular-nums; }
+.verdict { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.pill { font: 800 12px var(--ui); letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 99px; }
+.meter { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--down), var(--line) 50%, var(--up)); flex: 1; }
+.meter i { position: absolute; top: -4px; width: 4px; height: 16px; background: var(--fg); border-radius: 2px; transform: translateX(-2px); transition: left .4s; }
+ul.sig { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+ul.sig li { display: grid; grid-template-columns: 14px 1fr; gap: 8px; font-size: 13px; }
+ul.sig li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--muted); }
+ul.sig li.bull::before { background: var(--up); } ul.sig li.bear::before { background: var(--down); }
+ul.sig small { display: block; color: var(--muted); font-size: 12px; }
+table.lv { width: 100%; border-collapse: collapse; font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+table.lv td { padding: 4px 0; border-bottom: 1px solid var(--line); }
+table.lv td:last-child { text-align: right; color: var(--muted); }
+.status { font-size: 12px; color: var(--muted); }
+.status.err { color: var(--down); }
+.note { font-size: 11px; color: var(--muted); margin-top: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Chart<span>Desk</span></h1>
+  <span class="sub">Live crypto chart analyser · Coinbase market data · technical indicators</span>
+</header>
+
+<div class="bar">
+  <div class="group" id="presets"></div>
+  <input id="pair" value="BTC-USD" aria-label="Trading pair" spellcheck="false">
+  <button id="go">Load</button>
+  <span class="sep"></span>
+  <div class="group" id="tfs"></div>
+  <span class="sep"></span>
+  <label class="chk"><input type="checkbox" id="o-ema20" checked><i style="background:var(--accent)"></i>EMA 20</label>
+  <label class="chk"><input type="checkbox" id="o-ema50" checked><i style="background:var(--blue)"></i>EMA 50</label>
+  <label class="chk"><input type="checkbox" id="o-sma200"><i style="background:var(--violet)"></i>SMA 200</label>
+  <label class="chk"><input type="checkbox" id="o-bb"><i style="background:var(--muted)"></i>Bollinger</label>
+  <label class="chk"><input type="checkbox" id="o-sr" checked><i style="background:var(--fg)"></i>S/R levels</label>
+  <span class="sep"></span>
+  <label class="chk"><input type="checkbox" id="auto" checked>Auto-refresh 60s</label>
+  <label class="btn" for="csv">Import CSV</label><input type="file" id="csv" accept=".csv,text/csv" hidden>
+  <span class="status" id="status">Loading…</span>
+</div>
+
+<div class="grid">
+  <section class="panel charts">
+    <div class="legend" id="legend"></div>
+    <div id="main"></div>
+    <div class="paneLabel">RSI 14</div>
+    <div id="rsi"></div>
+    <div class="paneLabel">MACD 12 · 26 · 9</div>
+    <div id="macd"></div>
+  </section>
+
+  <aside>
+    <div class="panel">
+      <h2 id="title">—</h2>
+      <div class="price" id="last">—</div>
+      <div class="chg" id="chg"></div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="panel">
+      <h2>Technical read</h2>
+      <div class="verdict"><span class="pill" id="pill">—</span><div class="meter"><i id="needle" style="left:50%"></i></div></div>
+      <ul class="sig" id="signals"></ul>
+    </div>
+    <div class="panel">
+      <h2>Key levels</h2>
+      <table class="lv" id="levels"></table>
+      <p class="note">Support and resistance come from clustered swing highs and lows. Indicators describe past price action. They are not predictions or financial advice.</p>
+    </div>
+  </aside>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const PRESETS = ["BTC-USD","ETH-USD","SOL-USD","XRP-USD","DOGE-USD","ADA-USD","AVAX-USD","LINK-USD"];
+const GECKO = { BTC:"bitcoin", ETH:"ethereum", SOL:"solana", XRP:"ripple", DOGE:"dogecoin", ADA:"cardano", AVAX:"avalanche-2", LINK:"chainlink", LTC:"litecoin", DOT:"polkadot" };
+const TFS = [["15m",900],["1h",3600],["6h",21600],["1D",86400]];
+let state = { pair: "BTC-USD", tf: 3600, candles: [], source: "" };
+let timer = null;
+
+/* ---------- indicator math ---------- */
+const sma = (v, n) => v.map((_, i) => i < n - 1 ? null : v.slice(i - n + 1, i + 1).reduce((a, b) => a + b, 0) / n);
+function ema(v, n) {
+  const k = 2 / (n + 1), out = []; let prev = null;
+  v.forEach((x, i) => {
+    if (x == null) { out.push(null); return; }
+    if (prev == null) { const seed = v.slice(0, i + 1).filter(y => y != null); if (seed.length < n) { out.push(null); return; } prev = seed.slice(-n).reduce((a, b) => a + b, 0) / n; }
+    else prev = x * k + prev * (1 - k);
+    out.push(prev);
+  });
+  return out;
+}
+function rsi(c, n = 14) {
+  const out = Array(c.length).fill(null); let g = 0, l = 0;
+  for (let i = 1; i < c.length; i++) {
+    const d = c[i] - c[i - 1], up = Math.max(d, 0), dn = Math.max(-d, 0);
+    if (i <= n) { g += up; l += dn; if (i === n) { g /= n; l /= n; out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); } }
+    else { g = (g * (n - 1) + up) / n; l = (l * (n - 1) + dn) / n; out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); }
+  }
+  return out;
+}
+function macd(c) {
+  const f = ema(c, 12), s = ema(c, 26);
+  const line = c.map((_, i) => f[i] != null && s[i] != null ? f[i] - s[i] : null);
+  const sig = ema(line, 9);
+  return { line, sig, hist: line.map((x, i) => x != null && sig[i] != null ? x - sig[i] : null) };
+}
+function bollinger(c, n = 20, k = 2) {
+  const m = sma(c, n);
+  return c.map((_, i) => {
+    if (m[i] == null) return null;
+    const w = c.slice(i - n + 1, i + 1), sd = Math.sqrt(w.reduce((a, x) => a + (x - m[i]) ** 2, 0) / n);
+    return { mid: m[i], up: m[i] + k * sd, lo: m[i] - k * sd };
+  });
+}
+function atr(cs, n = 14) {
+  const tr = cs.map((c, i) => i === 0 ? c.high - c.low : Math.max(c.high - c.low, Math.abs(c.high - cs[i - 1].close), Math.abs(c.low - cs[i - 1].close)));
+  const out = Array(cs.length).fill(null); let a = null;
+  tr.forEach((t, i) => { if (i === n - 1) a = tr.slice(0, n).reduce((x, y) => x + y, 0) / n; else if (i >= n) a = (a * (n - 1) + t) / n; out[i] = a; });
+  return out;
+}
+function levels(cs, atrNow, k = 4) {
+  const piv = [];
+  for (let i = k; i < cs.length - k; i++) {
+    const w = cs.slice(i - k, i + k + 1);
+    if (cs[i].high === Math.max(...w.map(c => c.high))) piv.push(cs[i].high);
+    if (cs[i].low === Math.min(...w.map(c => c.low))) piv.push(cs[i].low);
+  }
+  piv.sort((a, b) => a - b);
+  const clusters = [];
+  for (const p of piv) {
+    const last = clusters[clusters.length - 1];
+    if (last && p - last.max <= atrNow * 0.6) { last.pts.push(p); last.max = p; }
+    else clusters.push({ pts: [p], max: p });
+  }
+  return clusters.map(c => ({ price: c.pts.reduce((a, b) => a + b, 0) / c.pts.length, touches: c.pts.length }));
+}
+
+/* ---------- data ---------- */
+async function fetchCoinbase(pair, gran) {
+  const r = await fetch(`https://api.exchange.coinbase.com/products/${encodeURIComponent(pair)}/candles?granularity=${gran}`);
+  if (!r.ok) throw new Error(r.status === 404 ? `Coinbase doesn't list ${pair}` : `Coinbase returned ${r.status}`);
+  const rows = await r.json();
+  if (!Array.isArray(rows) || !rows.length) throw new Error("No candles returned");
+  return rows.map(([t, low, high, open, close, volume]) => ({ time: t, open, high, low, close, volume })).sort((a, b) => a.time - b.time);
+}
+async function fetchGecko(pair) {
+  const id = GECKO[pair.split("-")[0]];
+  if (!id) throw new Error("No fallback source for this coin");
+  const r = await fetch(`https://api.coingecko.com/api/v3/coins/${id}/ohlc?vs_currency=usd&days=30`);
+  if (!r.ok) throw new Error(`CoinGecko returned ${r.status}`);
+  return (await r.json()).map(([t, open, high, low, close]) => ({ time: Math.floor(t / 1000), open, high, low, close, volume: 0 }));
+}
+async function load(quiet) {
+  if (!quiet) setStatus("Loading " + state.pair + "…");
+  try {
+    try { state.candles = await fetchCoinbase(state.pair, state.tf); state.source = "Coinbase"; }
+    catch (e) { state.candles = await fetchGecko(state.pair); state.source = "CoinGecko (4h, no volume)"; setStatus(e.message + ", using CoinGecko", true); }
+    render();
+    setStatus(`${state.source} · ${state.candles.length} candles · updated ${new Date().toLocaleTimeString()}`);
+  } catch (e) { setStatus(`Couldn't load ${state.pair}: ${e.message}. Check the pair name (e.g. BTC-USD) or your connection.`, true); }
+}
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/), head = lines[0].toLowerCase().split(/[,;\t]/).map(s => s.trim());
+  const ix = n => head.findIndex(h => h.includes(n));
+  const ti = Math.max(ix("time"), ix("date")), [oi, hi, li, ci, vi] = ["open","high","low","close","vol"].map(ix);
+  if ([ti, oi, hi, li, ci].some(i => i < 0)) throw new Error("CSV needs time/date, open, high, low, close columns");
+  return lines.slice(1).map(l => l.split(/[,;\t]/)).map(p => {
+    let t = p[ti].trim(); t = /^\d+$/.test(t) ? (+t > 1e12 ? Math.floor(+t / 1000) : +t) : Math.floor(Date.parse(t) / 1000);
+    return { time: t, open: +p[oi], high: +p[hi], low: +p[li], close: +p[ci], volume: vi >= 0 ? +p[vi] || 0 : 0 };
+  }).filter(c => isFinite(c.time) && isFinite(c.close)).sort((a, b) => a.time - b.time);
+}
+
+/* ---------- charts ---------- */
+const LC = LightweightCharts;
+function baseOpts(el, timeVisible) {
+  return {
+    width: el.clientWidth, height: el.clientHeight,
+    layout: { background: { color: "transparent" }, textColor: css("--muted"), fontFamily: "JetBrains Mono, monospace", fontSize: 11 },
+    grid: { vertLines: { color: css("--line") }, horzLines: { color: css("--line") } },
+    rightPriceScale: { borderColor: css("--line"), minimumWidth: 80 },
+    timeScale: { borderColor: css("--line"), timeVisible: true, secondsVisible: false, visible: timeVisible },
+    crosshair: { mode: LC.CrosshairMode.Normal },
+  };
+}
+const mainChart = LC.createChart($("main"), baseOpts($("main"), true));
+const rsiChart = LC.createChart($("rsi"), baseOpts($("rsi"), false));
+const macdChart = LC.createChart($("macd"), baseOpts($("macd"), false));
+const charts = [mainChart, rsiChart, macdChart];
+
+const S = {
+  candle: mainChart.addCandlestickSeries({ upColor: css("--up"), downColor: css("--down"), borderVisible: false, wickUpColor: css("--up"), wickDownColor: css("--down") }),
+  vol: mainChart.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false }),
+  ema20: mainChart.addLineSeries({ color: css("--accent"), lineWidth: 1.5, lastValueVisible: false, priceLineVisible: false }),
+  ema50: mainChart.addLineSeries({ color: css("--blue"), lineWidth: 1.5, lastValueVisible: false, priceLineVisible: false }),
+  sma200: mainChart.addLineSeries({ color: css("--violet"), lineWidth: 1.5, lastValueVisible: false, priceLineVisible: false }),
+  bbU: mainChart.addLineSeries({ color: css("--muted"), lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }),
+  bbL: mainChart.addLineSeries({ color: css("--muted"), lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }),
+  rsi: rsiChart.addLineSeries({ color: css("--violet"), lineWidth: 1.5, priceLineVisible: false }),
+  macdH: macdChart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false }),
+  macdL: macdChart.addLineSeries({ color: css("--blue"), lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false }),
+  macdS: macdChart.addLineSeries({ color: css("--accent"), lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false }),
+};
+mainChart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+mainChart.priceScale("right").applyOptions({ scaleMargins: { top: 0.06, bottom: 0.2 } });
+[70, 30].forEach(v => S.rsi.createPriceLine({ price: v, color: css("--muted"), lineStyle: 2, lineWidth: 1, axisLabelVisible: true }));
+rsiChart.priceScale("right").applyOptions({ autoScale: false });
+S.rsi.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
+
+// keep the three panes scrolled/zoomed together
+let syncing = false;
+charts.forEach(src => src.timeScale().subscribeVisibleLogicalRangeChange(r => {
+  if (syncing || !r) return; syncing = true;
+  charts.forEach(c => c !== src && c.timeScale().setVisibleLogicalRange(r)); syncing = false;
+}));
+new ResizeObserver(() => charts.forEach((c, i) => { const el = [$("main"), $("rsi"), $("macd")][i]; c.applyOptions({ width: el.clientWidth }); })).observe($("main"));
+
+let srLines = [], calc = {};
+const fmt = p => p == null ? "—" : p >= 1000 ? p.toLocaleString(undefined, { maximumFractionDigits: 2 }) : p >= 1 ? p.toFixed(p >= 100 ? 2 : 4) : p.toPrecision(4);
+// nulls become whitespace bars so every pane has the same bar count and stays aligned when synced
+const line = (arr, cs) => arr.map((v, i) => v == null ? { time: cs[i].time } : { time: cs[i].time, value: v });
+
+function render() {
+  const cs = state.candles, c = cs.map(x => x.close);
+  const e20 = ema(c, 20), e50 = ema(c, 50), s200 = sma(c, 200), bb = bollinger(c), r = rsi(c), m = macd(c), a = atr(cs);
+  calc = { cs, c, e20, e50, s200, bb, r, m, a };
+
+  S.candle.setData(cs);
+  S.vol.setData(cs.map(x => ({ time: x.time, value: x.volume, color: (x.close >= x.open ? css("--up") : css("--down")) + "55" })));
+  S.ema20.setData(line(e20, cs)); S.ema50.setData(line(e50, cs)); S.sma200.setData(line(s200, cs));
+  S.bbU.setData(line(bb.map(b => b && b.up), cs)); S.bbL.setData(line(bb.map(b => b && b.lo), cs));
+  S.rsi.setData(line(r, cs));
+  S.macdL.setData(line(m.line, cs)); S.macdS.setData(line(m.sig, cs));
+  S.macdH.setData(m.hist.map((v, i) => v == null ? { time: cs[i].time } : { time: cs[i].time, value: v, color: (v >= 0 ? css("--up") : css("--down")) + (i && Math.abs(v) < Math.abs(m.hist[i - 1] ?? 0) ? "66" : "cc") }));
+  applyToggles();
+  analyse();
+  legend(cs.length - 1);
+}
+
+function applyToggles() {
+  S.ema20.applyOptions({ visible: $("o-ema20").checked });
+  S.ema50.applyOptions({ visible: $("o-ema50").checked });
+  S.sma200.applyOptions({ visible: $("o-sma200").checked });
+  S.bbU.applyOptions({ visible: $("o-bb").checked }); S.bbL.applyOptions({ visible: $("o-bb").checked });
+  srLines.forEach(l => S.candle.removePriceLine(l)); srLines = [];
+  if ($("o-sr").checked && calc.levels) calc.levels.forEach(l => srLines.push(S.candle.createPriceLine({
+    price: l.price, color: (l.price > calc.last ? css("--down") : css("--up")) + "aa", lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: l.price > calc.last ? "R" : "S" })));
+}
+
+function legend(i) {
+  const { cs, e20, e50, r } = calc; const x = cs && cs[i]; if (!x) return;
+  const cls = x.close >= x.open ? "upc" : "downc";
+  $("legend").innerHTML = `<span>${new Date(x.time * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
+    <span>O <b class="${cls}">${fmt(x.open)}</b></span><span>H <b class="${cls}">${fmt(x.high)}</b></span>
+    <span>L <b class="${cls}">${fmt(x.low)}</b></span><span>C <b class="${cls}">${fmt(x.close)}</b></span>
+    <span>EMA20 <b>${fmt(e20[i])}</b></span><span>EMA50 <b>${fmt(e50[i])}</b></span><span>RSI <b>${r[i] == null ? "—" : r[i].toFixed(1)}</b></span>`;
+}
+mainChart.subscribeCrosshairMove(p => {
+  if (!calc.cs) return;
+  const i = p.time ? calc.cs.findIndex(x => x.time === p.time) : -1;
+  legend(i >= 0 ? i : calc.cs.length - 1);
+});
+
+/* ---------- analysis ---------- */
+function analyse() {
+  const { cs, c, e20, e50, s200, bb, r, m, a } = calc, n = c.length - 1, last = c[n];
+  calc.last = last;
+  const first = c[0], chg = (last - first) / first * 100;
+  const hi = Math.max(...cs.map(x => x.high)), lo = Math.min(...cs.map(x => x.low));
+  const rets = c.slice(1).map((x, i) => Math.log(x / c[i]));
+  const mean = rets.reduce((p, q) => p + q, 0) / rets.length;
+  const sd = Math.sqrt(rets.reduce((p, q) => p + (q - mean) ** 2, 0) / rets.length);
+  const perYear = 31536000 / (cs[1] ? cs[1].time - cs[0].time : state.tf);
+  const tfLabel = (TFS.find(t => t[1] === state.tf) || ["custom"])[0];
+
+  $("title").textContent = `${state.pair} · ${state.source.startsWith("CSV") ? "imported" : tfLabel} candles`;
+  $("last").textContent = fmt(last);
+  $("chg").className = "chg " + (chg >= 0 ? "upc" : "downc");
+  $("chg").textContent = `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}% over ${cs.length} candles`;
+  const vol = cs.reduce((s, x) => s + x.volume * x.close, 0);
+  $("stats").innerHTML = [
+    ["Period high", fmt(hi)], ["Period low", fmt(lo)],
+    ["ATR 14", a[n] ? `${fmt(a[n])} (${(a[n] / last * 100).toFixed(2)}%)` : "—"],
+    ["Volatility (ann.)", `${(sd * Math.sqrt(perYear) * 100).toFixed(1)}%`],
+    ["From high", `${((last - hi) / hi * 100).toFixed(2)}%`],
+    ["Quote volume", vol ? "$" + Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(vol) : "—"],
+  ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+
+  // each signal scores -1 (bearish) .. +1 (bullish)
+  const sig = [];
+  if (e50[n] != null) {
+    const s = last > e50[n] ? 1 : -1;
+    sig.push([s, `Price ${s > 0 ? "above" : "below"} EMA 50`, `${((last - e50[n]) / e50[n] * 100).toFixed(2)}% from the medium-term average`]);
+  }
+  if (e20[n] != null && e50[n] != null) {
+    let crossAgo = null;
+    for (let i = n; i > n - 30 && i > 0; i--) if (e20[i - 1] != null && e50[i - 1] != null && Math.sign(e20[i] - e50[i]) !== Math.sign(e20[i - 1] - e50[i - 1])) { crossAgo = n - i; break; }
+    const s = e20[n] > e50[n] ? 1 : -1;
+    sig.push([s, `EMA 20 ${s > 0 ? "above" : "below"} EMA 50`, crossAgo != null ? `${s > 0 ? "Bullish" : "Bearish"} cross ${crossAgo} candles ago` : "No crossover in the last 30 candles"]);
+  }
+  if (s200[n] != null) {
+    const s = last > s200[n] ? 1 : -1;
+    sig.push([s, `${s > 0 ? "Above" : "Below"} SMA 200`, "Long-term trend filter"]);
+  }
+  if (r[n] != null) {
+    const v = r[n];
+    const [s, t] = v >= 70 ? [-0.5, "Overbought: momentum is stretched"] : v <= 30 ? [0.5, "Oversold: selling may be exhausted"] : v >= 55 ? [0.5, "Bullish momentum zone"] : v <= 45 ? [-0.5, "Bearish momentum zone"] : [0, "Neutral momentum"];
+    sig.push([s, `RSI ${v.toFixed(1)}`, t]);
+  }
+  if (m.hist[n] != null) {
+    const h = m.hist[n], rising = h > (m.hist[n - 1] ?? h);
+    const s = (h > 0 ? 0.5 : -0.5) + (rising ? 0.5 : -0.5);
+    sig.push([s, `MACD histogram ${h > 0 ? "positive" : "negative"}, ${rising ? "rising" : "falling"}`, s === 0 ? "Momentum is turning" : s > 0 ? "Upside momentum building" : "Downside momentum building"]);
+  }
+  if (bb[n]) {
+    const pb = (last - bb[n].lo) / (bb[n].up - bb[n].lo), width = (bb[n].up - bb[n].lo) / bb[n].mid * 100;
+    const widths = bb.slice(-100).filter(Boolean).map(b => (b.up - b.lo) / b.mid * 100).sort((x, y) => x - y);
+    const squeeze = width <= widths[Math.floor(widths.length * 0.15)];
+    sig.push([pb > 1 ? -0.5 : pb < 0 ? 0.5 : 0, `Bollinger %B ${(pb * 100).toFixed(0)}%`, `${pb > 1 ? "Closed above the upper band" : pb < 0 ? "Closed below the lower band" : "Inside the bands"}${squeeze ? " · squeeze, a volatility expansion is likely" : ""}`]);
+  }
+  const score = sig.reduce((s, x) => s + x[0], 0) / Math.max(1, sig.length);
+  const [label, color] = score > 0.35 ? ["Bullish", "--up"] : score > 0.1 ? ["Leaning bullish", "--up"] : score < -0.35 ? ["Bearish", "--down"] : score < -0.1 ? ["Leaning bearish", "--down"] : ["Neutral", "--muted"];
+  $("pill").textContent = label;
+  $("pill").style.cssText = `background:${css(color)}22;color:${css(color)}`;
+  $("needle").style.left = `${50 + score * 50}%`;
+  $("signals").innerHTML = sig.map(([s, t, d]) => `<li class="${s > 0 ? "bull" : s < 0 ? "bear" : ""}"><div>${t}<small>${d}</small></div></li>`).join("");
+
+  // nearest support/resistance
+  const lv = a[n] ? levels(cs, a[n]) : [];
+  const above = lv.filter(l => l.price > last).sort((x, y) => x.price - y.price).slice(0, 3);
+  const below = lv.filter(l => l.price < last).sort((x, y) => y.price - x.price).slice(0, 3);
+  calc.levels = [...above, ...below];
+  const row = (l, kind) => `<tr><td class="${kind === "R" ? "downc" : "upc"}">${kind} ${fmt(l.price)}</td><td>${((l.price - last) / last * 100).toFixed(2)}% · ${l.touches} touch${l.touches > 1 ? "es" : ""}</td></tr>`;
+  $("levels").innerHTML = [...above.slice().reverse().map(l => row(l, "R")), `<tr><td><b>Now ${fmt(last)}</b></td><td></td></tr>`, ...below.map(l => row(l, "S"))].join("");
+  applyToggles();
+}
+
+/* ---------- controls ---------- */
+function setStatus(t, err) { $("status").textContent = t; $("status").className = "status" + (err ? " err" : ""); }
+$("presets").innerHTML = PRESETS.map(p => `<button data-p="${p}">${p.split("-")[0]}</button>`).join("");
+$("tfs").innerHTML = TFS.map(([l, g]) => `<button data-tf="${g}">${l}</button>`).join("");
+function markActive() {
+  document.querySelectorAll("[data-p]").forEach(b => b.classList.toggle("on", b.dataset.p === state.pair));
+  document.querySelectorAll("[data-tf]").forEach(b => b.classList.toggle("on", +b.dataset.tf === state.tf));
+}
+function choose(pair, tf) {
+  if (pair) state.pair = pair.toUpperCase().trim();
+  if (tf) state.tf = tf;
+  $("pair").value = state.pair; markActive();
+  try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf })); } catch {}
+  load().then(() => charts.forEach(c => c.timeScale().fitContent()));
+}
+$("presets").onclick = e => e.target.dataset.p && choose(e.target.dataset.p);
+$("tfs").onclick = e => e.target.dataset.tf && choose(null, +e.target.dataset.tf);
+$("go").onclick = () => choose($("pair").value);
+$("pair").onkeydown = e => e.key === "Enter" && choose($("pair").value);
+["o-ema20","o-ema50","o-sma200","o-bb","o-sr"].forEach(id => $(id).onchange = applyToggles);
+function schedule() { clearInterval(timer); if ($("auto").checked) timer = setInterval(() => !state.source.startsWith("CSV") && load(true), 60000); }
+$("auto").onchange = schedule;
+$("csv").onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => {
+    state.candles = parseCSV(t); state.source = "CSV: " + f.name; state.pair = f.name.replace(/\.csv$/i, "");
+    markActive(); render(); charts.forEach(c => c.timeScale().fitContent());
+    setStatus(`Imported ${state.candles.length} candles from ${f.name}`);
+  }).catch(err => setStatus(err.message, true));
+  e.target.value = "";
+};
+
+try { const s = JSON.parse(localStorage.getItem("chartdesk")); if (s) Object.assign(state, s); } catch {}
+choose(); schedule();
+</script>
+</body>
+</html>
