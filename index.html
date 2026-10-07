@@ -27,6 +27,26 @@ header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; m
 h1 { font: 800 19px/1 var(--brand); margin: 0; letter-spacing: .04em; text-transform: uppercase; }
 h1 span { color: var(--accent); }
 h1 small { display: block; font: 600 9px var(--ui); letter-spacing: .32em; color: var(--muted); margin-top: 4px; }
+.alertForm { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.alertForm .row { display: flex; gap: 6px; grid-column: 1 / -1; min-width: 0; }
+.alertForm input, .alertForm select { min-width: 0; cursor: text; font-family: var(--mono); }
+.alertForm select { cursor: pointer; font-family: var(--ui); }
+#al-coin { flex: 1; text-transform: uppercase; }
+#al-price { flex: 1; }
+#al-add { background: var(--accent); border-color: var(--accent); color: #fff; }
+ul.alerts { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; }
+ul.alerts li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+ul.alerts li b { font-weight: 600; }
+ul.alerts li small { display: block; color: var(--muted); font-size: 11px; }
+ul.alerts li.hit { color: var(--accent); }
+ul.alerts li button { padding: 3px 8px; font-size: 11px; }
+.empty { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+.alertMeta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+.alertMeta button { padding: 3px 8px; font-size: 11px; }
+#toasts { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 8px; z-index: 10; max-width: calc(100vw - 32px); }
+.toast { background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 14px; box-shadow: 0 8px 24px #0006; font-size: 13px; display: flex; gap: 12px; align-items: center; }
+.toast b { color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) { .toast { animation: pop .25s ease-out; } @keyframes pop { from { transform: translateY(8px); opacity: 0; } } }
 footer { margin-top: 16px; font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; }
 .sub { color: var(--muted); font-size: 12px; }
 .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
@@ -123,6 +143,19 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
       <div class="stats" id="stats"></div>
     </div>
     <div class="panel">
+      <h2>Price alerts</h2>
+      <form class="alertForm" id="al-form">
+        <div class="row">
+          <input id="al-coin" list="pairs" aria-label="Coin" spellcheck="false" autocomplete="off">
+          <select id="al-dir" aria-label="Condition"><option value="above">rises above</option><option value="below">falls below</option></select>
+        </div>
+        <input id="al-price" inputmode="decimal" placeholder="Price in USD" aria-label="Alert price" autocomplete="off">
+        <button id="al-add" type="submit">Add alert</button>
+      </form>
+      <ul class="alerts" id="al-list"></ul>
+      <div class="alertMeta"><span id="al-note">Checked every 20s while this page is open</span><button id="al-perm" type="button" hidden>Turn on notifications</button></div>
+    </div>
+    <div class="panel">
       <h2>Technical read</h2>
       <div class="verdict"><span class="pill" id="pill">—</span><div class="meter"><i id="needle" style="left:50%"></i></div></div>
       <ul class="sig" id="signals"></ul>
@@ -135,6 +168,7 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
   </aside>
 </div>
 
+<div id="toasts" aria-live="polite"></div>
 <footer><span>© Escape Room</span><span>Market data from Coinbase. Indicators describe past price action. Not financial advice.</span></footer>
 
 <script>
@@ -224,7 +258,8 @@ async function load(quiet) {
   try {
     try { state.candles = await fetchCoinbase(state.pair, state.tf); state.source = "Coinbase"; }
     catch (e) { state.candles = await fetchGecko(state.pair); state.source = "CoinGecko (4h, no volume)"; setStatus(e.message + ", using CoinGecko", true); }
-    render();
+    if (!state.source.startsWith("CSV")) lastPrices[state.pair] = state.candles[state.candles.length - 1].close;
+    render(); fillAlertForm(); renderAlerts();
     setStatus(`${state.source} · ${state.candles.length} candles · updated ${new Date().toLocaleTimeString()}`);
   } catch (e) { setStatus(`Couldn't load ${state.pair}: ${e.message}. Check the pair name (e.g. BTC-USD) or your connection.`, true); }
 }
@@ -318,6 +353,8 @@ function applyToggles() {
   S.sma200.applyOptions({ visible: $("o-sma200").checked });
   S.bbU.applyOptions({ visible: $("o-bb").checked }); S.bbL.applyOptions({ visible: $("o-bb").checked });
   srLines.forEach(l => S.candle.removePriceLine(l)); srLines = [];
+  alerts.filter(a => a.pair === state.pair && !a.hit).forEach(a => srLines.push(S.candle.createPriceLine({
+    price: a.price, color: css("--accent"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "Alert" })));
   if ($("o-sr").checked && calc.levels) calc.levels.forEach(l => srLines.push(S.candle.createPriceLine({
     price: l.price, color: (l.price > calc.last ? css("--down") : css("--up")) + "aa", lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: l.price > calc.last ? "R" : "S" })));
 }
@@ -411,6 +448,112 @@ function analyse() {
 }
 
 /* ---------- controls ---------- */
+/* ---------- price alerts (saved in this browser, checked while the page is open) ---------- */
+let alerts = [], lastPrices = {};
+try { alerts = JSON.parse(localStorage.getItem("er-alerts")) || []; } catch {}
+const saveAlerts = () => { try { localStorage.setItem("er-alerts", JSON.stringify(alerts)); } catch {} };
+const normPair = v => { v = v.toUpperCase().trim(); return v && !v.includes("-") ? v + "-USD" : v; };
+
+function renderAlerts() {
+  const list = alerts.slice().sort((a, b) => (a.hit ? 1 : 0) - (b.hit ? 1 : 0) || b.created - a.created);
+  $("al-list").innerHTML = list.length ? list.map(a => {
+    const now = lastPrices[a.pair], dist = now ? ((a.price - now) / now * 100) : null;
+    const sub = a.hit ? `Triggered ${new Date(a.hit).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} at ${fmt(a.hitPrice)}`
+      : now ? `Now ${fmt(now)} · ${dist >= 0 ? "+" : ""}${dist.toFixed(2)}% away` : "Waiting for price…";
+    return `<li class="${a.hit ? "hit" : ""}"><div><b>${a.pair.replace("-USD", "")}</b> ${a.dir === "above" ? "≥" : "≤"} ${fmt(a.price)}<small>${sub}</small></div>
+      ${a.hit ? `<button data-rearm="${a.id}" type="button">Re-arm</button>` : `<button data-view="${a.pair}" type="button">View</button>`}
+      <button data-del="${a.id}" type="button" aria-label="Delete alert">✕</button></li>`;
+  }).join("") : `<li style="display:block;border:0;padding:0"><p class="empty">No alerts yet. Pick a coin and a price to get notified when it's crossed.</p></li>`;
+  const p = "Notification" in window ? Notification.permission : "unsupported";
+  $("al-perm").hidden = !(alerts.some(a => !a.hit) && p === "default");
+  if (state.candles.length) applyToggles();
+}
+
+function fillAlertForm() {
+  $("al-coin").value = state.pair;
+  const now = lastPrices[state.pair] ?? calc.last;
+  $("al-price").placeholder = now ? `Now ${fmt(now)}` : "Price in USD";
+}
+
+$("al-form").onsubmit = e => {
+  e.preventDefault();
+  const pair = normPair($("al-coin").value), price = parseFloat($("al-price").value.replace(/[$,\s]/g, ""));
+  if (!pair) { toast("Pick a coin for the alert"); return; }
+  if (!(price > 0)) { toast("Enter a price above zero, e.g. 70000"); $("al-price").focus(); return; }
+  alerts.push({ id: Date.now().toString(36), pair, dir: $("al-dir").value, price, created: Date.now(), hit: null });
+  saveAlerts(); $("al-price").value = "";
+  if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().then(renderAlerts).catch(() => {});
+  unlockAudio(); renderAlerts(); checkAlerts();
+  toast(`Alert set: ${pair.replace("-USD", "")} ${$("al-dir").value === "above" ? "above" : "below"} ${fmt(price)}`);
+};
+$("al-list").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.del) alerts = alerts.filter(a => a.id !== b.dataset.del);
+  if (b.dataset.rearm) { const a = alerts.find(a => a.id === b.dataset.rearm); a.hit = null; a.hitPrice = null; }
+  if (b.dataset.view) { choose(b.dataset.view); return; }
+  saveAlerts(); renderAlerts(); checkAlerts();
+};
+$("al-perm").onclick = () => "Notification" in window && Notification.requestPermission().then(renderAlerts).catch(() => {});
+
+async function checkAlerts() {
+  const pairs = [...new Set(alerts.filter(a => !a.hit).map(a => a.pair))];
+  const fetchPairs = state.source.startsWith("CSV") ? pairs : [...new Set([...pairs, state.pair])];
+  await Promise.all(fetchPairs.map(async pair => {
+    try {
+      const r = await fetch(`https://api.exchange.coinbase.com/products/${encodeURIComponent(pair)}/ticker`);
+      if (r.ok) { const t = await r.json(); if (+t.price > 0) lastPrices[pair] = +t.price; }
+    } catch {}
+  }));
+  let fired = false;
+  for (const a of alerts) {
+    const now = lastPrices[a.pair];
+    if (a.hit || now == null) continue;
+    if (a.dir === "above" ? now >= a.price : now <= a.price) { a.hit = Date.now(); a.hitPrice = now; fired = true; fire(a); }
+  }
+  if (fired) saveAlerts();
+  if (lastPrices[state.pair] && !state.source.startsWith("CSV")) $("last").textContent = fmt(lastPrices[state.pair]);
+  renderAlerts();
+  $("al-note").textContent = pairs.length ? `Checked ${new Date().toLocaleTimeString([], { timeStyle: "short" })} · every 20s while open` : "Checked every 20s while this page is open";
+}
+
+function fire(a) {
+  const msg = `${a.pair.replace("-USD", "")} is ${a.dir === "above" ? "above" : "below"} ${fmt(a.price)} (now ${fmt(a.hitPrice)})`;
+  toast(`<b>Price alert</b> ${msg}`, true);
+  chime(); flashTitle(msg);
+  try { if ("Notification" in window && Notification.permission === "granted") new Notification("Escape Room price alert", { body: msg, tag: a.id }); } catch {}
+}
+
+function toast(html, sticky) {
+  const t = document.createElement("div"); t.className = "toast";
+  t.innerHTML = `<span>${html}</span><button type="button" aria-label="Dismiss">✕</button>`;
+  t.querySelector("button").onclick = () => t.remove();
+  $("toasts").append(t);
+  setTimeout(() => t.remove(), sticky ? 60000 : 4000);
+}
+
+let audioCtx = null;
+function unlockAudio() { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch {} }
+function chime() {
+  if (!audioCtx) return;
+  [880, 1320].forEach((f, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t0 = audioCtx.currentTime + i * 0.18;
+    o.frequency.value = f; o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+    o.start(t0); o.stop(t0 + 0.55);
+  });
+}
+document.addEventListener("pointerdown", unlockAudio, { once: true });
+
+let flashTimer = null;
+const baseTitle = document.title;
+function flashTitle(msg) {
+  clearInterval(flashTimer); let on = false;
+  flashTimer = setInterval(() => { document.title = (on = !on) ? "🔔 " + msg : baseTitle; }, 1000);
+  const stop = () => { clearInterval(flashTimer); document.title = baseTitle; };
+  if (document.hasFocus()) setTimeout(stop, 8000);
+  window.addEventListener("focus", stop, { once: true });
+}
+
 function setStatus(t, err) { $("status").textContent = t; $("status").className = "status" + (err ? " err" : ""); }
 $("presets").innerHTML = PRESETS.map(p => `<button data-p="${p}">${p.split("-")[0]}</button>`).join("");
 $("tfs").innerHTML = TFS.map(([l, g]) => `<button data-tf="${g}">${l}</button>`).join("");
@@ -450,7 +593,8 @@ fetch("https://api.exchange.coinbase.com/products").then(r => r.json()).then(lis
 }).catch(() => {});
 $("pair").onchange = () => $("pair").value && choose($("pair").value);
 $("pair").onfocus = () => $("pair").select();
-choose(); schedule();
+renderAlerts(); choose(); schedule();
+checkAlerts(); setInterval(checkAlerts, 20000);
 </script>
 </body>
 </html>
