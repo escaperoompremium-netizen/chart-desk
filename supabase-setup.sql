@@ -216,3 +216,25 @@ begin
 end $$;
 revoke execute on function public.is_admin(), public.admin_stats() from public, anon;
 grant execute on function public.is_admin(), public.admin_stats() to authenticated;
+
+-- ===== Part 6: connected wallets (public addresses only; balances are read live from the blockchain) =====
+create table if not exists public.wallets (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  chain text not null check (chain in ('btc', 'eth', 'sol')),
+  address text not null check (address ~ '^[A-Za-z0-9]{26,90}$'),
+  label text check (label is null or length(label) <= 40),
+  created_at timestamptz not null default now(),
+  unique (user_id, chain, address)
+);
+alter table public.wallets enable row level security;
+create policy "Read own wallets" on public.wallets for select to authenticated using ((select auth.uid()) = user_id);
+create policy "Add own wallets" on public.wallets for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "Remove own wallets" on public.wallets for delete to authenticated using ((select auth.uid()) = user_id);
+create or replace function public.limit_wallets() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if (select count(*) from public.wallets where user_id = new.user_id) >= 20 then raise exception 'Wallet limit reached (20)'; end if;
+  return new;
+end $$;
+drop trigger if exists limit_wallets on public.wallets;
+create trigger limit_wallets before insert on public.wallets for each row execute function public.limit_wallets();

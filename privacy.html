@@ -36,7 +36,8 @@ footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line);
 <h2>What we collect</h2>
 <ul>
 <li><b>Account details:</b> your email address and password. Passwords are stored as a one-way hash by our database provider; we never see your actual password.</li>
-<li><b>What you save:</b> your price alerts (coin, direction, price, and when one triggered), your watchlist, and whether you want email alerts.</li>
+<li><b>What you save:</b> your price alerts (type, coin, level, and when one fired), your watchlist, your portfolio holdings, and whether you want email alerts.</li>
+<li><b>Connected wallets:</b> if you connect a wallet, we store its public address and the name you give it. Public addresses and their balances are visible to anyone on the blockchain. We never ask for, and you should never enter, a recovery phrase or private key.</li>
 <li><b>Notification details:</b> if you turn on push alerts, your browser gives us a delivery address for that device. It identifies the device's notification channel, not you personally.</li>
 <li><b>Technical data:</b> our hosting and database providers automatically log basic request information such as IP addresses and browser type, for security and to keep the service running.</li>
 <li><b>On your device:</b> we store small settings in your browser, like the last coin and timeframe you viewed and your sign-in session. These are not used for tracking or advertising.</li>
@@ -50,7 +51,8 @@ footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--line);
 <ul>
 <li><b>Supabase</b>: accounts, database and the scheduled alert checker. Your account data is stored in Supabase's Tokyo, Japan region.</li>
 <li><b>GitHub Pages</b>: hosts the website files.</li>
-<li><b>Coinbase</b>: your browser loads prices directly from Coinbase's public market data, so Coinbase sees your IP address when you use the charts.</li>
+<li><b>Coinbase, CoinGecko and Frankfurter</b> (European Central Bank exchange rates): your browser loads prices and rates directly from these public services, so they see your IP address when you use the charts and heatmaps.</li>
+<li><b>mempool.space and PublicNode</b>: your browser asks these public blockchain services for the balances of wallets you connect, so they see those addresses and your IP address.</li>
 <li><b>Push services</b> run by your browser maker (such as Google, Mozilla, Apple or Microsoft): deliver push notifications to your device.</li>
 <li><b>Resend</b>: sends alert emails, if you have email alerts turned on.</li>
 <li><b>Shopify</b>: manages our domain name.</li>
