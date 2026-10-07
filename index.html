@@ -597,8 +597,27 @@ async function fetchFx(pair, since) {
   // daily close only, so each candle opens at the previous day's close
   return days.map(([t, c], i) => { const o = i ? days[i - 1][1] : c; return { time: t, open: o, high: Math.max(o, c), low: Math.min(o, c), close: c, volume: 0 }; });
 }
+// One background download covers all the forex quick buttons (crosses are worked out from dollar rates)
+let fxPrefetch = null;
+function prefetchFx() {
+  if (fxPrefetch) return fxPrefetch;
+  const cur = ["EUR", "GBP", "JPY", "CHF", "AUD", "CAD", "NZD"];
+  return fxPrefetch = fetch(`${FXAPI}2008-01-01..?from=USD&to=${cur.join(",")}`).then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || !j.rates) { fxPrefetch = null; return; }
+    const days = Object.entries(j.rates).map(([d, v]) => [Date.parse(d + "T00:00:00Z") / 1000, v]).sort((a, b) => a[0] - b[0]);
+    const rate = (v, c) => c === "USD" ? 1 : v[c];
+    for (const p of FX_PRESETS) {
+      const key = p + "|86400"; if (cacheGet(key)) continue;
+      const [b, q] = p.slice(3).split("/");
+      const pts = days.map(([t, v]) => [t, +(rate(v, q) / rate(v, b)).toPrecision(6)]).filter(x => x[1] > 0);
+      candleCache[key] = { at: Date.now(), rows: pts.map(([t, c], i) => { const o = i ? pts[i - 1][1] : c; return { time: t, open: o, high: Math.max(o, c), low: Math.min(o, c), close: c, volume: 0 }; }) };
+    }
+  }).catch(() => { fxPrefetch = null; });
+}
 async function getFxCandles(pair) {
-  const key = pair + "|86400", c = cacheGet(key);
+  const key = pair + "|86400";
+  if (!cacheGet(key) && FX_PRESETS.includes(pair)) await prefetchFx(); // reuse the shared download if it's coming
+  const c = cacheGet(key);
   if (c && Date.now() - c.at < 1800000) return c.rows;
   let rows;
   if (c) { // only recent days can be new
@@ -1060,6 +1079,7 @@ function renderPresets() {
   document.querySelectorAll("#market [data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === market));
   markActive();
 }
+["pointerenter", "focusin", "touchstart"].forEach(ev => $("market").addEventListener(ev, () => prefetchFx(), { passive: true }));
 $("market").onclick = e => { const b = e.target.closest("[data-m]"); if (!b || b.dataset.m === market) return; choose(b.dataset.m === "fx" ? FX_PRESETS[0] : PRESETS[0]); }; // the switch follows the chart that opens
 renderPresets();
 $("tfs").innerHTML = TFS.map(([l, g]) => `<button data-tf="${g}">${l}</button>`).join("");
@@ -1433,7 +1453,7 @@ function showApp() {
   $("auth").hidden = true; $("app").hidden = false;
   $("acct-email").textContent = user.email;
   bootApp(); syncPush();
-  Promise.all([loadWatch(), loadHoldings(), firstChart]).then(() => { refreshMarket(); refreshSparks(watch); });
+  Promise.all([loadWatch(), loadHoldings(), firstChart]).then(() => { refreshMarket(); refreshSparks(watch); setTimeout(prefetchFx, 1500); });
   loadEmailPref(); syncAlertForm();
   sb.rpc("is_admin").then(({ data }) => { $("admin-link").hidden = data !== true; });
   try { const v = localStorage.getItem("er-view"); if (v === "portfolio" || v === "heatmap") showView(v); } catch {}
