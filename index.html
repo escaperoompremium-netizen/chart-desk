@@ -167,6 +167,9 @@ table.pf td small { display: block; color: var(--muted); font: 11px var(--ui); }
 table.pf button { padding: 3px 8px; font-size: 11px; }
 .pfForm { display: flex; flex-direction: column; gap: 10px; }
 .pfForm input { font: 14px var(--mono); padding: 9px 10px; cursor: text; }
+.ranges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; padding: 8px 4px 2px; border-top: 1px solid var(--line); margin-top: 6px; }
+.ranges span { font: 600 10px var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+.ranges button { padding: 5px 12px; font-family: var(--mono); }
 footer { margin-top: 16px; font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; }
 .sub { color: var(--muted); font-size: 12px; }
 .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
@@ -332,6 +335,9 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
     <div id="rsi"></div>
     <div class="paneLabel">MACD 12 · 26 · 9</div>
     <div id="macd"></div>
+    <div class="ranges" id="ranges"><span>Range</span>
+      <button type="button" data-range="1D">1D</button><button type="button" data-range="1W">1W</button><button type="button" data-range="1M">1M</button><button type="button" data-range="3M">3M</button><button type="button" data-range="1Y">1Y</button>
+    </div>
   </section>
 
   <aside>
@@ -427,7 +433,7 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const PRESETS = ["BTC","ETH","SOL","XRP","DOGE","ADA","AVAX","LINK","LTC","DOT","SHIB","PEPE","SUI","BCH","UNI","NEAR","XLM","HBAR","TON","AAVE"].map(c => c + "-USD");
 const GECKO = { BTC:"bitcoin", ETH:"ethereum", SOL:"solana", XRP:"ripple", DOGE:"dogecoin", ADA:"cardano", AVAX:"avalanche-2", LINK:"chainlink", LTC:"litecoin", DOT:"polkadot", SHIB:"shiba-inu", PEPE:"pepe", SUI:"sui", BCH:"bitcoin-cash", UNI:"uniswap", NEAR:"near", XLM:"stellar", HBAR:"hedera-hashgraph", TON:"the-open-network", AAVE:"aave" };
 const TFS = [["15m",900],["1h",3600],["6h",21600],["1D",86400]];
-let state = { pair: "BTC-USD", tf: 3600, candles: [], source: "" };
+let state = { pair: "BTC-USD", tf: 3600, range: null, candles: [], source: "" };
 let timer = null;
 
 /* ---------- indicator math ---------- */
@@ -489,13 +495,24 @@ function levels(cs, atrNow, k = 4) {
 }
 
 /* ---------- data ---------- */
-async function fetchCoinbase(pair, gran) {
-  const r = await fetch(`https://api.exchange.coinbase.com/products/${encodeURIComponent(pair)}/candles?granularity=${gran}`);
-  if (!r.ok) throw new Error(r.status === 404 ? `Coinbase doesn't list ${pair}` : `Coinbase returned ${r.status}`);
-  const rows = await r.json();
-  if (!Array.isArray(rows) || !rows.length) throw new Error("No candles returned");
-  return rows.map(([t, low, high, open, close, volume]) => ({ time: t, open, high, low, close, volume })).sort((a, b) => a.time - b.time);
+async function fetchCoinbase(pair, gran, pages = 1) {
+  const all = new Map();
+  let end = Math.floor(Date.now() / 1000);
+  for (let i = 0; i < pages; i++) {
+    const start = end - 300 * gran;
+    const q = pages > 1 ? `&start=${new Date(start * 1000).toISOString()}&end=${new Date(end * 1000).toISOString()}` : "";
+    const r = await fetch(`https://api.exchange.coinbase.com/products/${encodeURIComponent(pair)}/candles?granularity=${gran}${q}`);
+    if (!r.ok) { if (i) break; throw new Error(r.status === 404 ? `Coinbase doesn't list ${pair}` : `Coinbase returned ${r.status}`); }
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) { if (i) break; throw new Error("No candles returned"); }
+    rows.forEach(([t, low, high, open, close, volume]) => all.set(t, { time: t, open, high, low, close, volume }));
+    end = start;
+  }
+  return [...all.values()].sort((a, b) => a.time - b.time);
 }
+// Range buttons: candle size, how many 300-candle pages to load, and how much to show
+const RANGES = { "1D": { tf: 900, secs: 86400 }, "1W": { tf: 3600, secs: 604800 }, "1M": { tf: 21600, secs: 2592000 },
+  "3M": { tf: 86400, secs: 7776000 }, "1Y": { tf: 86400, secs: 31536000, pages: 2 } };
 async function fetchGecko(pair) {
   const id = GECKO[pair.split("-")[0]];
   if (!id) throw new Error("No fallback source for this coin");
@@ -506,7 +523,7 @@ async function fetchGecko(pair) {
 async function load(quiet) {
   if (!quiet) setStatus("Loading " + state.pair + "…");
   try {
-    try { state.candles = await fetchCoinbase(state.pair, state.tf); state.source = "Coinbase"; }
+    try { state.candles = await fetchCoinbase(state.pair, state.tf, (RANGES[state.range] || {}).pages || 1); state.source = "Coinbase"; }
     catch (e) { state.candles = await fetchGecko(state.pair); state.source = "CoinGecko (4h, no volume)"; setStatus(e.message + ", using CoinGecko", true); }
     if (!state.source.startsWith("CSV")) lastPrices[state.pair] = state.candles[state.candles.length - 1].close;
     render(); fillAlertForm(); renderAlerts();
@@ -557,7 +574,6 @@ const S = {
 mainChart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
 mainChart.priceScale("right").applyOptions({ scaleMargins: { top: 0.06, bottom: 0.2 } });
 [70, 30].forEach(v => S.rsi.createPriceLine({ price: v, color: css("--muted"), lineStyle: 2, lineWidth: 1, axisLabelVisible: true }));
-rsiChart.priceScale("right").applyOptions({ autoScale: false });
 S.rsi.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
 
 // keep the three panes scrolled/zoomed together
@@ -925,16 +941,24 @@ $("tfs").innerHTML = TFS.map(([l, g]) => `<button data-tf="${g}">${l}</button>`)
 function markActive() {
   document.querySelectorAll("[data-p]").forEach(b => b.classList.toggle("on", b.dataset.p === state.pair));
   document.querySelectorAll("[data-tf]").forEach(b => b.classList.toggle("on", +b.dataset.tf === state.tf));
+  document.querySelectorAll("[data-range]").forEach(b => b.classList.toggle("on", b.dataset.range === state.range));
+}
+function fitRange() {
+  const r = RANGES[state.range], cs = state.candles;
+  if (!r || !cs.length || state.source.startsWith("CSV")) { charts.forEach(c => c.timeScale().fitContent()); return; }
+  const to = cs[cs.length - 1].time, from = Math.max(cs[0].time, to - r.secs);
+  mainChart.timeScale().setVisibleRange({ from, to }); // the RSI and MACD panes follow automatically
 }
 function choose(pair, tf) {
   if (pair) { state.pair = pair.toUpperCase().trim(); if (!state.pair.includes("-")) state.pair += "-USD"; }
-  if (tf) state.tf = tf;
+  if (tf) { state.tf = tf; if (!(RANGES[state.range] && RANGES[state.range].tf === tf)) state.range = null; }
   $("pair").value = ""; closeResults(); markActive(); updateStar();
-  try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf })); } catch {}
-  load().then(() => charts.forEach(c => c.timeScale().fitContent()));
+  try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf, range: state.range })); } catch {}
+  load().then(fitRange);
 }
 $("presets").onclick = e => e.target.dataset.p && choose(e.target.dataset.p);
 $("tfs").onclick = e => e.target.dataset.tf && choose(null, +e.target.dataset.tf);
+$("ranges").onclick = e => { const r = e.target.dataset.range; if (!r) return; state.range = r; choose(null, RANGES[r].tf); };
 ["o-ema20","o-ema50","o-sma200","o-bb","o-sr"].forEach(id => $(id).onchange = applyToggles);
 function schedule() { clearInterval(timer); if ($("auto").checked) timer = setInterval(() => !state.source.startsWith("CSV") && load(true), 60000); }
 $("auto").onchange = schedule;
