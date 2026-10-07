@@ -345,7 +345,7 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
 <datalist id="pairs"></datalist>
 <div class="movers" id="movers" aria-label="Top movers in the last 24 hours"><span class="moversLabel">Top movers 24h</span></div>
 <div class="bar">
-  <div class="group" id="market" role="tablist" aria-label="Market"><button type="button" data-m="crypto" class="on">Crypto</button><button type="button" data-m="fx">Forex</button></div>
+  <div class="group" id="market" role="tablist" aria-label="Market"><button type="button" data-m="crypto" class="on">Crypto</button><button type="button" data-m="fx">Forex</button><button type="button" data-m="stocks">Stocks</button></div>
   <div class="group" id="presets"></div>
   <span class="sep"></span>
   <label class="chk"><input type="checkbox" id="o-ema20" checked><i style="background:var(--accent)"></i>EMA 20</label>
@@ -617,7 +617,22 @@ function cachePut(key, c) {
 }
 /* ---------- forex: European Central Bank daily reference rates via Frankfurter ---------- */
 const isFx = p => p.startsWith("FX:");
-const pretty = p => isFx(p) ? p.slice(3) : p;
+const isStock = p => p.startsWith("ST:");
+const pretty = p => isFx(p) || isStock(p) ? p.slice(3) : p;
+const ST_PRESETS = ["JPM", "V", "WMT", "KO", "DIS", "BA", "XOM", "JNJ", "PG", "NKE", "MCD", "IBM"].map(x => "ST:" + x);
+let stockNote = "";
+// NYSE stocks: prices come through our own "stocks" server function (Twelve Data), which keeps the API key private and caches results
+async function getStockCandles(pair, gran) {
+  const minute = gran === 60, key = pair + "|" + (minute ? 60 : 86400), c = cacheGet(key);
+  if (c && Date.now() - c.at < (minute ? 60000 : 900000)) return c.rows;
+  const { data, error } = await sb.functions.invoke("stocks", { body: { symbol: pair.slice(3), interval: minute ? "1min" : "1day" } });
+  if (error) { let msg = "Stock data is unavailable right now."; try { msg = (await error.context.json()).error || msg; } catch {} if (c) return c.rows; throw new Error(msg); }
+  const rows = data.rows.map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));
+  if (!rows.length) throw new Error("No price data for " + pair.slice(3));
+  stockNote = data.stale ? " (cached)" : "";
+  candleCache[key] = { rows, at: Date.now() }; // memory only; the server keeps the shared cache
+  return rows;
+}
 const FX_PRESETS = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD", "EUR/GBP", "EUR/JPY", "GBP/JPY"].map(x => "FX:" + x);
 const FXAPI = "https://api.frankfurter.dev/v1/";
 async function fetchFx(pair, since) {
@@ -660,6 +675,7 @@ async function getFxCandles(pair) {
 }
 async function getCandles(pair, gran) {
   if (isFx(pair)) return getFxCandles(pair);
+  if (isStock(pair)) return getStockCandles(pair, gran);
   const key = pair + "|" + gran, c = cacheGet(key);
   if (c && Date.now() - c.at < (gran === 60 ? 20000 : 300000)) return c.rows;
   if (c) { // only the newest batch can have changed, so fetch just that
@@ -685,18 +701,21 @@ async function load(quiet) {
     try {
       const all = await getCandles(pair, cfg.gran);
       if (seq !== loadSeq) return; // a newer coin or candle size was picked meanwhile
-      const from = all[all.length - 1].time - cfg.pages * 300 * cfg.gran, raw = all.filter(c => c.time > from);
-      state.candles = cfg.group ? combine(raw, cfg.group) : raw; state.source = isFx(pair) ? "European Central Bank daily rates" : "Coinbase";
+      const from = all[all.length - 1].time - cfg.pages * 300 * cfg.gran;
+      // minute stock data has gaps outside trading hours, so take a number of candles rather than a time span
+      const raw = isStock(pair) && cfg.gran === 60 ? all.slice(-cfg.pages * 300) : all.filter(c => c.time > from);
+      state.candles = cfg.group ? combine(raw, cfg.group) : raw;
+      state.source = isFx(pair) ? "European Central Bank daily rates" : isStock(pair) ? "Twelve Data · NYSE" + stockNote : "Coinbase";
     }
     catch (e) {
-      if (isFx(pair)) throw e;
+      if (isFx(pair) || isStock(pair)) throw e;
       const g = await fetchGecko(pair); if (seq !== loadSeq) return;
       state.candles = g; state.source = "CoinGecko (4h, no volume)"; setStatus(e.message + ", using CoinGecko", true);
     }
     if (!state.source.startsWith("CSV")) lastPrices[state.pair] = state.candles[state.candles.length - 1].close;
     render(); fillAlertForm(); renderAlerts();
     setStatus(`${state.source} · ${state.candles.length} candles · updated ${new Date().toLocaleTimeString()}`);
-  } catch (e) { setStatus(`Couldn't load ${state.pair}: ${e.message}. Check the pair name (e.g. BTC-USD) or your connection.`, true); }
+  } catch (e) { setStatus(isStock(state.pair) || isFx(state.pair) ? `Couldn't load ${pretty(state.pair)}: ${e.message}` : `Couldn't load ${state.pair}: ${e.message}. Check the pair name (e.g. BTC-USD) or your connection.`, true); }
 }
 function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/), head = lines[0].toLowerCase().split(/[,;\t]/).map(s => s.trim());
@@ -934,7 +953,7 @@ function renderAlerts() {
 }
 
 function fillAlertForm() {
-  if (isFx(state.pair)) return; // alerts are for crypto for now
+  if (isFx(state.pair) || isStock(state.pair)) return; // alerts are for crypto for now
   $("al-coin").value = state.pair;
   if ($("al-kind").value === "price") { const now = lastPrices[state.pair] ?? calc.last; $("al-price").placeholder = now ? `Now ${fmt(now)}` : "Price in USD"; }
 }
@@ -984,7 +1003,7 @@ async function checkAlerts() {
     else if (a.repeat && a.lastHit && a.id in lastHitBefore && a.lastHit !== lastHitBefore[a.id]) fire(a);
   }
   const pairs = [...new Set(alerts.filter(a => !a.hit).map(a => a.pair))];
-  const fetchPairs = state.source.startsWith("CSV") || isFx(state.pair) ? pairs : [...new Set([...pairs, state.pair])];
+  const fetchPairs = state.source.startsWith("CSV") || isFx(state.pair) || isStock(state.pair) ? pairs : [...new Set([...pairs, state.pair])];
   await Promise.all(fetchPairs.map(async pair => {
     try {
       const r = await fetch(`https://api.exchange.coinbase.com/products/${encodeURIComponent(pair)}/ticker`);
@@ -1107,22 +1126,22 @@ $("push-btn").onclick = () => pushOn ? turnOffPush() : turnOnPush();
 function setStatus(t, err) { $("status").textContent = t; $("status").className = "status" + (err ? " err" : ""); }
 let market = "crypto";
 function renderPresets() {
-  $("presets").innerHTML = (market === "fx" ? FX_PRESETS : PRESETS).map(p => `<button data-p="${p}">${market === "fx" ? p.slice(3) : p.split("-")[0]}</button>`).join("");
+  $("presets").innerHTML = (market === "fx" ? FX_PRESETS : market === "stocks" ? ST_PRESETS : PRESETS).map(p => `<button data-p="${p}">${market === "crypto" ? p.split("-")[0] : p.slice(3)}</button>`).join("");
   document.querySelectorAll("#market [data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === market));
   markActive();
 }
 ["pointerenter", "focusin", "touchstart"].forEach(ev => $("market").addEventListener(ev, () => prefetchFx(), { passive: true }));
-$("market").onclick = e => { const b = e.target.closest("[data-m]"); if (!b || b.dataset.m === market) return; choose(b.dataset.m === "fx" ? FX_PRESETS[0] : PRESETS[0]); }; // the switch follows the chart that opens
+$("market").onclick = e => { const b = e.target.closest("[data-m]"); if (!b || b.dataset.m === market) return; if (b.dataset.m === "stocks") loadStockList(); choose(b.dataset.m === "fx" ? FX_PRESETS[0] : b.dataset.m === "stocks" ? ST_PRESETS[0] : PRESETS[0]); }; // the switch follows the chart that opens
 renderPresets();
 $("tfs").innerHTML = TFS.map(([l, g]) => `<button data-tf="${g}">${l}</button>`).join("");
 function markActive() {
   document.querySelectorAll("[data-p]").forEach(b => b.classList.toggle("on", b.dataset.p === state.pair));
   document.querySelectorAll("[data-tf]").forEach(b => { b.classList.toggle("on", +b.dataset.tf === state.tf); b.disabled = isFx(state.pair) && +b.dataset.tf < 86400; b.title = b.disabled ? "Forex rates are daily, so the smallest candle is 1W" : ""; });
-  const m = isFx(state.pair) ? "fx" : "crypto";
+  const m = isFx(state.pair) ? "fx" : isStock(state.pair) ? "stocks" : "crypto";
   if (typeof market !== "undefined" && m !== market) { market = m; renderPresets(); }
 }
 function choose(pair, tf) {
-  if (pair) { state.pair = pair.toUpperCase().trim(); if (!state.pair.includes("-") && !isFx(state.pair)) state.pair += "-USD"; }
+  if (pair) { state.pair = pair.toUpperCase().trim(); if (!state.pair.includes("-") && !state.pair.includes(":")) state.pair += "-USD"; }
   if (isFx(state.pair) && state.tf < 86400) state.tf = 604800; // forex rates are daily, so no 1m/3m
   if (tf) state.tf = tf;
   $("pair").value = ""; closeResults(); markActive(); updateStar();
@@ -1146,6 +1165,25 @@ $("csv").onchange = e => {
 
 try { const s = JSON.parse(localStorage.getItem("chartdesk")); if (s) { state.pair = s.pair || state.pair; if (CANDLES[s.tf]) state.tf = s.tf; } } catch {}
 /* ---------- coin search ---------- */
+let stockList = null, stockListLoading = null;
+try { const v = JSON.parse(localStorage.getItem("er-stocks")); if (v && Date.now() - v.at < 86400000) stockList = v.list; } catch {}
+function addStocksToSearch(list) {
+  if (!list || !coins || coins.some(c => c.stock)) return;
+  coins = coins.concat(list.map(([sym, name]) => ({ id: "ST:" + sym, sym, name: name + " · NYSE", stock: true })));
+  updateSearchHint();
+}
+function updateSearchHint() {
+  const n = k => coins.filter(c => c[k]).length, crypto = coins.filter(c => !c.fx && !c.stock).length;
+  $("pair").placeholder = `Search ${crypto} coins, ${n("stock") ? n("stock").toLocaleString() + " NYSE stocks, " : ""}${n("fx")} currency pairs…`;
+}
+function loadStockList() {
+  if (stockList) { addStocksToSearch(stockList); return Promise.resolve(); }
+  return stockListLoading = stockListLoading || fetch("https://api.twelvedata.com/stocks?exchange=NYSE&type=Common%20Stock").then(r => r.json()).then(j => {
+    stockList = (j.data || []).map(x => [x.symbol, x.name]).filter(x => /^[A-Z][A-Z.\-]{0,9}$/.test(x[0]));
+    try { localStorage.setItem("er-stocks", JSON.stringify({ at: Date.now(), list: stockList })); } catch {}
+    addStocksToSearch(stockList);
+  }).catch(() => { stockListLoading = null; });
+}
 let coins = PRESETS.map(id => ({ id, sym: id.split("-")[0], name: "" })), hits = [], sel = 0;
 Promise.all([
   fetch("https://api.exchange.coinbase.com/products").then(r => r.json()),
@@ -1160,8 +1198,9 @@ Promise.all([
     { id: `FX:USD/${c}`, sym: `USD/${c}`, name: `US Dollar / ${fxNames[c]}`, fx: true }]);
   if (fxNames.EUR && fxNames.GBP) fxList.push({ id: "FX:EUR/GBP", sym: "EUR/GBP", name: "Euro / British Pound", fx: true }, { id: "FX:EUR/JPY", sym: "EUR/JPY", name: "Euro / Japanese Yen", fx: true }, { id: "FX:GBP/JPY", sym: "GBP/JPY", name: "British Pound / Japanese Yen", fx: true });
   coins = coins.concat(fxList);
+  addStocksToSearch(stockList);
   $("pairs").innerHTML = coins.filter(c => !c.fx).map(c => `<option value="${c.id}">${c.name}</option>`).join("");
-  $("pair").placeholder = `Search ${coins.filter(c => !c.fx).length} coins and ${coins.filter(c => c.fx).length} currency pairs…`;
+  updateSearchHint();
 }).catch(() => {});
 
 function searchCoins(q) {
@@ -1187,7 +1226,7 @@ function highlight(i) {
   $("results").children[sel]?.scrollIntoView({ block: "nearest" });
 }
 $("pair").oninput = showResults;
-$("pair").onfocus = showResults;
+$("pair").onfocus = () => { loadStockList(); showResults(); };
 $("pair").onkeydown = e => {
   if (e.key === "ArrowDown") { e.preventDefault(); if ($("results").hidden) showResults(); else if (hits.length) highlight(sel + 1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); if (hits.length) highlight(sel - 1); }
@@ -1207,7 +1246,7 @@ async function loadWatch() {
 }
 function updateStar() {
   const on = watch.includes(state.pair), b = $("star");
-  b.hidden = state.source.startsWith("CSV") || isFx(state.pair);
+  b.hidden = state.source.startsWith("CSV") || isFx(state.pair) || isStock(state.pair);
   b.setAttribute("aria-pressed", on); b.textContent = on ? "★ Watching" : "☆ Watch";
   [...$("wl").children].forEach(li => li.classList.toggle("cur", li.dataset.p === state.pair));
 }

@@ -262,3 +262,7 @@ begin
   delete from vault.secrets where name = 'cb_' || auth.uid()::text;
   delete from auth.users where id = auth.uid();
 end $$;
+
+-- ===== Part 8: stock price cache (filled by the "stocks" function; nobody else can read or write it) =====
+create table if not exists public.market_cache (key text primary key, body jsonb not null, at timestamptz not null default now());
+alter table public.market_cache enable row level security;
