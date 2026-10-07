@@ -314,8 +314,6 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
 <div class="bar">
   <div class="group" id="presets"></div>
   <span class="sep"></span>
-  <div class="group" id="tfs"></div>
-  <span class="sep"></span>
   <label class="chk"><input type="checkbox" id="o-ema20" checked><i style="background:var(--accent)"></i>EMA 20</label>
   <label class="chk"><input type="checkbox" id="o-ema50" checked><i style="background:var(--blue)"></i>EMA 50</label>
   <label class="chk"><input type="checkbox" id="o-sma200"><i style="background:var(--violet)"></i>SMA 200</label>
@@ -335,9 +333,7 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
     <div id="rsi"></div>
     <div class="paneLabel">MACD 12 · 26 · 9</div>
     <div id="macd"></div>
-    <div class="ranges" id="ranges"><span>Range</span>
-      <button type="button" data-range="1D">1D</button><button type="button" data-range="1W">1W</button><button type="button" data-range="1M">1M</button><button type="button" data-range="3M">3M</button><button type="button" data-range="1Y">1Y</button>
-    </div>
+    <div class="ranges"><span>Candles</span><div class="group" id="tfs"></div></div>
   </section>
 
   <aside>
@@ -432,8 +428,27 @@ let user = null, authMode = "signup";
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const PRESETS = ["BTC","ETH","SOL","XRP","DOGE","ADA","AVAX","LINK","LTC","DOT","SHIB","PEPE","SUI","BCH","UNI","NEAR","XLM","HBAR","TON","AAVE"].map(c => c + "-USD");
 const GECKO = { BTC:"bitcoin", ETH:"ethereum", SOL:"solana", XRP:"ripple", DOGE:"dogecoin", ADA:"cardano", AVAX:"avalanche-2", LINK:"chainlink", LTC:"litecoin", DOT:"polkadot", SHIB:"shiba-inu", PEPE:"pepe", SUI:"sui", BCH:"bitcoin-cash", UNI:"uniswap", NEAR:"near", XLM:"stellar", HBAR:"hedera-hashgraph", TON:"the-open-network", AAVE:"aave" };
-const TFS = [["15m",900],["1h",3600],["6h",21600],["1D",86400]];
-let state = { pair: "BTC-USD", tf: 3600, range: null, candles: [], source: "" };
+const TFS = [["1m",60],["3m",180],["1W",604800],["1M",2592000],["1Y",31536000]];
+// Coinbase only serves 1-minute and daily candles for these, so 3m/1W/1M/1Y are built by combining them
+const CANDLES = { 60: { gran: 60, pages: 1 }, 180: { gran: 60, pages: 3, group: "3m" },
+  604800: { gran: 86400, pages: 5, group: "week" }, 2592000: { gran: 86400, pages: 15, group: "month" }, 31536000: { gran: 86400, pages: 15, group: "year" } };
+function bucketStart(t, group) {
+  const d = new Date(t * 1000);
+  if (group === "3m") return Math.floor(t / 180) * 180;
+  if (group === "week") return Math.floor((t - 345600) / 604800) * 604800 + 345600; // weeks start on Monday
+  if (group === "month") return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000;
+  return Date.UTC(d.getUTCFullYear(), 0, 1) / 1000;
+}
+function combine(cs, group) {
+  const out = [];
+  for (const c of cs) {
+    const t = bucketStart(c.time, group), last = out[out.length - 1];
+    if (last && last.time === t) { last.high = Math.max(last.high, c.high); last.low = Math.min(last.low, c.low); last.close = c.close; last.volume += c.volume; }
+    else out.push({ time: t, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume });
+  }
+  return out;
+}
+let state = { pair: "BTC-USD", tf: 604800, candles: [], source: "" };
 let timer = null;
 
 /* ---------- indicator math ---------- */
@@ -510,9 +525,7 @@ async function fetchCoinbase(pair, gran, pages = 1) {
   }
   return [...all.values()].sort((a, b) => a.time - b.time);
 }
-// Range buttons: candle size, how many 300-candle pages to load, and how much to show
-const RANGES = { "1D": { tf: 900, secs: 86400 }, "1W": { tf: 3600, secs: 604800 }, "1M": { tf: 21600, secs: 2592000 },
-  "3M": { tf: 86400, secs: 7776000 }, "1Y": { tf: 86400, secs: 31536000, pages: 2 } };
+
 async function fetchGecko(pair) {
   const id = GECKO[pair.split("-")[0]];
   if (!id) throw new Error("No fallback source for this coin");
@@ -523,7 +536,11 @@ async function fetchGecko(pair) {
 async function load(quiet) {
   if (!quiet) setStatus("Loading " + state.pair + "…");
   try {
-    try { state.candles = await fetchCoinbase(state.pair, state.tf, (RANGES[state.range] || {}).pages || 1); state.source = "Coinbase"; }
+    try {
+      const cfg = CANDLES[state.tf] || CANDLES[604800];
+      const raw = await fetchCoinbase(state.pair, cfg.gran, cfg.pages);
+      state.candles = cfg.group ? combine(raw, cfg.group) : raw; state.source = "Coinbase";
+    }
     catch (e) { state.candles = await fetchGecko(state.pair); state.source = "CoinGecko (4h, no volume)"; setStatus(e.message + ", using CoinGecko", true); }
     if (!state.source.startsWith("CSV")) lastPrices[state.pair] = state.candles[state.candles.length - 1].close;
     render(); fillAlertForm(); renderAlerts();
@@ -941,24 +958,16 @@ $("tfs").innerHTML = TFS.map(([l, g]) => `<button data-tf="${g}">${l}</button>`)
 function markActive() {
   document.querySelectorAll("[data-p]").forEach(b => b.classList.toggle("on", b.dataset.p === state.pair));
   document.querySelectorAll("[data-tf]").forEach(b => b.classList.toggle("on", +b.dataset.tf === state.tf));
-  document.querySelectorAll("[data-range]").forEach(b => b.classList.toggle("on", b.dataset.range === state.range));
-}
-function fitRange() {
-  const r = RANGES[state.range], cs = state.candles;
-  if (!r || !cs.length || state.source.startsWith("CSV")) { charts.forEach(c => c.timeScale().fitContent()); return; }
-  const to = cs[cs.length - 1].time, from = Math.max(cs[0].time, to - r.secs);
-  mainChart.timeScale().setVisibleRange({ from, to }); // the RSI and MACD panes follow automatically
 }
 function choose(pair, tf) {
   if (pair) { state.pair = pair.toUpperCase().trim(); if (!state.pair.includes("-")) state.pair += "-USD"; }
-  if (tf) { state.tf = tf; if (!(RANGES[state.range] && RANGES[state.range].tf === tf)) state.range = null; }
+  if (tf) state.tf = tf;
   $("pair").value = ""; closeResults(); markActive(); updateStar();
-  try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf, range: state.range })); } catch {}
-  load().then(fitRange);
+  try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf })); } catch {}
+  load().then(() => charts.forEach(c => c.timeScale().fitContent()));
 }
 $("presets").onclick = e => e.target.dataset.p && choose(e.target.dataset.p);
 $("tfs").onclick = e => e.target.dataset.tf && choose(null, +e.target.dataset.tf);
-$("ranges").onclick = e => { const r = e.target.dataset.range; if (!r) return; state.range = r; choose(null, RANGES[r].tf); };
 ["o-ema20","o-ema50","o-sma200","o-bb","o-sr"].forEach(id => $(id).onchange = applyToggles);
 function schedule() { clearInterval(timer); if ($("auto").checked) timer = setInterval(() => !state.source.startsWith("CSV") && load(true), 60000); }
 $("auto").onchange = schedule;
@@ -972,7 +981,7 @@ $("csv").onchange = e => {
   e.target.value = "";
 };
 
-try { const s = JSON.parse(localStorage.getItem("chartdesk")); if (s) Object.assign(state, s); } catch {}
+try { const s = JSON.parse(localStorage.getItem("chartdesk")); if (s) { state.pair = s.pair || state.pair; if (CANDLES[s.tf]) state.tf = s.tf; } } catch {}
 /* ---------- coin search ---------- */
 let coins = PRESETS.map(id => ({ id, sym: id.split("-")[0], name: "" })), hits = [], sel = 0;
 Promise.all([
