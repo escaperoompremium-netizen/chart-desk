@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Escape Room Charts</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#0e1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Escape Room">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
@@ -72,6 +78,13 @@ header { justify-content: space-between; }
 .msg { font-size: 13px; margin: 0; }
 .msg.err { color: var(--down); } .msg.ok { color: var(--up); }
 .fine { font-size: 11px; color: var(--muted); margin: 0; text-align: center; }
+.pushBox { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
+.pushBox b { font-size: 13px; font-weight: 600; display: block; }
+.pushBox small { color: var(--muted); font-size: 11px; display: block; margin-top: 2px; }
+.pushBox.on { border-style: solid; border-color: color-mix(in srgb, var(--up) 50%, var(--line)); }
+.pushBox.on b::before { content: "● "; color: var(--up); }
+.pushBox button { flex: none; }
+#push-btn.cta { background: var(--accent); border-color: var(--accent); color: #fff; }
 footer { margin-top: 16px; font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; }
 .sub { color: var(--muted); font-size: 12px; }
 .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
@@ -217,7 +230,11 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
         <button id="al-add" type="submit">Add alert</button>
       </form>
       <ul class="alerts" id="al-list"></ul>
-      <div class="alertMeta"><span id="al-note">Saved to your account · checked every 20s while open</span><button id="al-perm" type="button" hidden>Turn on notifications</button></div>
+      <div class="alertMeta"><span id="al-note">Saved to your account · checked every minute</span><button id="al-perm" type="button" hidden>Turn on notifications</button></div>
+      <div class="pushBox" id="push-box">
+        <div><b id="push-title">Get alerts when the site is closed</b><small id="push-note">Push notifications to this device.</small></div>
+        <button id="push-btn" class="cta" type="button">Turn on</button>
+      </div>
     </div>
     <div class="panel">
       <h2>Technical read</h2>
@@ -542,7 +559,7 @@ function renderAlerts() {
       <button data-del="${a.id}" type="button" aria-label="Delete alert">✕</button></li>`;
   }).join("") : `<li style="display:block;border:0;padding:0"><p class="empty">No alerts yet. Pick a coin and a price to get notified when it's crossed.</p></li>`;
   const p = "Notification" in window ? Notification.permission : "unsupported";
-  $("al-perm").hidden = !(alerts.some(a => !a.hit) && p === "default");
+  $("al-perm").hidden = pushOn || !(alerts.some(a => !a.hit) && p === "default");
   if (state.candles.length) applyToggles();
 }
 
@@ -583,9 +600,12 @@ $("al-list").onclick = async e => {
 };
 $("al-perm").onclick = () => "Notification" in window && Notification.requestPermission().then(renderAlerts).catch(() => {});
 
+const firedHere = new Set(); // alerts this page has already announced
 async function checkAlerts() {
   if (!user) return;
-  await loadAlerts(); // picks up alerts added or removed on the person's other devices
+  const armedBefore = new Set(alerts.filter(a => !a.hit).map(a => a.id));
+  await loadAlerts(); // picks up alerts added or removed on other devices, and hits marked by the server
+  for (const a of alerts) if (a.hit && armedBefore.has(a.id) && !firedHere.has(a.id)) { firedHere.add(a.id); fire(a); }
   const pairs = [...new Set(alerts.filter(a => !a.hit).map(a => a.pair))];
   const fetchPairs = state.source.startsWith("CSV") ? pairs : [...new Set([...pairs, state.pair])];
   await Promise.all(fetchPairs.map(async pair => {
@@ -598,21 +618,20 @@ async function checkAlerts() {
   for (const a of alerts) {
     const now = lastPrices[a.pair];
     if (a.hit || now == null) continue;
-    if (a.dir === "above" ? now >= a.price : now <= a.price) {
-      a.hit = Date.now(); a.hitPrice = now; fire(a);
-      sb.from("alerts").update({ hit_at: new Date(a.hit).toISOString(), hit_price: now }).eq("id", a.id).then(() => {});
-    }
+    // announce it here straight away; the server marks it as triggered and sends the push within a minute
+    if ((a.dir === "above" ? now >= a.price : now <= a.price) && !firedHere.has(a.id)) { firedHere.add(a.id); fire({ ...a, hitPrice: now }); }
   }
   if (lastPrices[state.pair] && !state.source.startsWith("CSV")) $("last").textContent = fmt(lastPrices[state.pair]);
   renderAlerts();
-  $("al-note").textContent = pairs.length ? `Checked ${new Date().toLocaleTimeString([], { timeStyle: "short" })} · every 20s while open` : "Saved to your account · checked every 20s while open";
+  $("al-note").textContent = pairs.length ? `Prices updated ${new Date().toLocaleTimeString([], { timeStyle: "short" })} · server checks every minute` : "Saved to your account · checked every minute";
 }
 
 function fire(a) {
   const msg = `${a.pair.replace("-USD", "")} is ${a.dir === "above" ? "above" : "below"} ${fmt(a.price)} (now ${fmt(a.hitPrice)})`;
   toast(`<b>Price alert</b> ${msg}`, true);
   chime(); flashTitle(msg);
-  try { if ("Notification" in window && Notification.permission === "granted") new Notification("Escape Room price alert", { body: msg, tag: a.id }); } catch {}
+  // with push on, the server's notification covers this device; otherwise show one from the page
+  try { if (!pushOn && "Notification" in window && Notification.permission === "granted") new Notification("Escape Room price alert", { body: msg, tag: a.id }); } catch {}
 }
 
 function toast(html, sticky) {
@@ -645,6 +664,68 @@ function flashTitle(msg) {
   if (document.hasFocus()) setTimeout(stop, 8000);
   window.addEventListener("focus", stop, { once: true });
 }
+
+/* ---------- push notifications (work while the site is closed) ---------- */
+let pushOn = false;
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const b64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(s.length / 4) * 4, "=")), c => c.charCodeAt(0));
+
+function pushUI(note) {
+  const box = $("push-box"), btn = $("push-btn");
+  box.classList.toggle("on", pushOn);
+  btn.classList.toggle("cta", !pushOn);
+  btn.hidden = false; btn.disabled = false;
+  if (pushOn) { $("push-title").textContent = "Alerts on for this device"; btn.textContent = "Turn off"; }
+  else { $("push-title").textContent = "Get alerts when the site is closed"; btn.textContent = "Turn on"; }
+  if (!pushSupported) {
+    btn.hidden = true;
+    note = isIOS && !standalone ? "On iPhone: tap Share, then Add to Home Screen. Open Escape Room from your home screen to turn this on."
+      : "This browser can't receive push notifications. Try Chrome, Edge, Firefox or Safari.";
+  }
+  $("push-note").textContent = note || (pushOn ? "Notifications arrive even when this site is closed." : "Push notifications to this device.");
+  renderAlerts();
+}
+async function currentSub() {
+  if (!pushSupported) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+async function syncPush() { // on sign-in: link this device's subscription to whoever is signed in
+  try {
+    const sub = await currentSub();
+    pushOn = !!sub && Notification.permission === "granted";
+    if (pushOn) { const j = sub.toJSON(); await sb.rpc("save_push_subscription", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth }); }
+  } catch {}
+  pushUI();
+}
+async function turnOnPush() {
+  $("push-btn").disabled = true;
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { pushUI(perm === "denied" ? "Notifications are blocked for this site. Allow them in your browser's site settings, then try again." : "Allow notifications when your browser asks, to turn this on."); return; }
+    const { data: jwk } = await sb.rpc("get_vapid_public_key");
+    if (!jwk?.x) { pushUI("Push is still being set up. Try again in a minute."); return; }
+    const key = new Uint8Array([4, ...b64u(jwk.x), ...b64u(jwk.y)]);
+    const reg = await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe(); // start fresh in case the key changed
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    const j = sub.toJSON();
+    const { error } = await sb.rpc("save_push_subscription", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+    if (error) { await sub.unsubscribe(); pushUI("Couldn't save this device. Check your connection and try again."); return; }
+    pushOn = true; unlockAudio(); pushUI();
+    toast("Push alerts are on for this device");
+  } catch (e) { pushUI("Couldn't turn on notifications here. " + (e.message || "")); }
+}
+async function turnOffPush() {
+  $("push-btn").disabled = true;
+  try { const sub = await currentSub(); if (sub) { await sb.rpc("remove_push_subscription", { p_endpoint: sub.endpoint }); await sub.unsubscribe(); } } catch {}
+  pushOn = false; pushUI();
+}
+$("push-btn").onclick = () => pushOn ? turnOffPush() : turnOnPush();
 
 function setStatus(t, err) { $("status").textContent = t; $("status").className = "status" + (err ? " err" : ""); }
 $("presets").innerHTML = PRESETS.map(p => `<button data-p="${p}">${p.split("-")[0]}</button>`).join("");
@@ -747,7 +828,7 @@ function showAuth() { $("app").hidden = true; $("auth").hidden = false; }
 function showApp() {
   $("auth").hidden = true; $("app").hidden = false;
   $("acct-email").textContent = user.email;
-  bootApp();
+  bootApp(); syncPush();
 }
 $("auth-tabs").onclick = e => e.target.dataset.mode && setMode(e.target.dataset.mode);
 $("auth-forgot").onclick = async () => {
@@ -787,7 +868,10 @@ $("auth-form").onsubmit = async e => {
     }
   } finally { $("auth-submit").disabled = false; $("auth-pass").value = ""; }
 };
-$("signout").onclick = () => sb.auth.signOut();
+$("signout").onclick = async () => {
+  try { const sub = await currentSub(); if (sub) { await sb.rpc("remove_push_subscription", { p_endpoint: sub.endpoint }); await sub.unsubscribe(); } } catch {}
+  pushOn = false; sb.auth.signOut();
+};
 
 if (!sb) { showAuth(); authMsg("Accounts aren't connected yet. Sign-up opens shortly.", "err"); $("auth-submit").disabled = true; }
 else sb.auth.onAuthStateChange((event, session) => {
