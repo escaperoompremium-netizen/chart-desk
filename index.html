@@ -511,19 +511,53 @@ function levels(cs, atrNow, k = 4) {
 
 /* ---------- data ---------- */
 async function fetchCoinbase(pair, gran, pages = 1) {
+  const now = Math.floor(Date.now() / 1000), base = `https://api.exchange.coinbase.com/products/${encodeURIComponent(pair)}/candles?granularity=${gran}`;
+  const urls = [...Array(pages)].map((_, i) => { const end = now - i * 300 * gran;
+    return pages > 1 ? `${base}&start=${new Date((end - 300 * gran) * 1000).toISOString()}&end=${new Date(end * 1000).toISOString()}` : base; });
+  const getPage = async (u, i, retry = true) => {
+    const r = await fetch(u);
+    if (r.status === 429 && retry) { await new Promise(res => setTimeout(res, 800)); return getPage(u, i, false); }
+    if (!r.ok) { if (i) return []; throw new Error(r.status === 404 ? `Coinbase doesn't list ${pair}` : `Coinbase returned ${r.status}`); }
+    const rows = await r.json(); return Array.isArray(rows) ? rows : [];
+  };
   const all = new Map();
-  let end = Math.floor(Date.now() / 1000);
-  for (let i = 0; i < pages; i++) {
-    const start = end - 300 * gran;
-    const q = pages > 1 ? `&start=${new Date(start * 1000).toISOString()}&end=${new Date(end * 1000).toISOString()}` : "";
-    const r = await fetch(`https://api.exchange.coinbase.com/products/${encodeURIComponent(pair)}/candles?granularity=${gran}${q}`);
-    if (!r.ok) { if (i) break; throw new Error(r.status === 404 ? `Coinbase doesn't list ${pair}` : `Coinbase returned ${r.status}`); }
-    const rows = await r.json();
-    if (!Array.isArray(rows) || !rows.length) { if (i) break; throw new Error("No candles returned"); }
-    rows.forEach(([t, low, high, open, close, volume]) => all.set(t, { time: t, open, high, low, close, volume }));
-    end = start;
+  for (let i = 0; i < pages; i += 8) { // download up to 8 batches at once
+    const batch = await Promise.all(urls.slice(i, i + 8).map((u, j) => getPage(u, i + j)));
+    batch.flat().forEach(([t, low, high, open, close, volume]) => all.set(t, { time: t, open, high, low, close, volume }));
+    if (!batch[batch.length - 1].length) break; // reached the coin's first trading day
   }
+  if (!all.size) throw new Error("No candles returned");
   return [...all.values()].sort((a, b) => a.time - b.time);
+}
+
+/* ---------- candle cache: daily data is shared by 1W/1M/1Y and remembered between visits ---------- */
+const candleCache = {};
+const FULL_PAGES = { 60: 3, 86400: 15 };
+function cacheGet(key) {
+  if (candleCache[key]) return candleCache[key];
+  try { const v = JSON.parse(localStorage.getItem("er-c:" + key));
+    if (v) return candleCache[key] = { at: v.at, rows: v.r.map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume })) }; } catch {}
+  return null;
+}
+function cachePut(key, c) {
+  candleCache[key] = c;
+  if (!key.endsWith("|86400")) return; // only daily history is worth keeping between visits
+  try {
+    const idx = JSON.parse(localStorage.getItem("er-c-index") || "[]").filter(k => k !== key); idx.unshift(key);
+    idx.slice(6).forEach(k => localStorage.removeItem("er-c:" + k)); // keep the 6 most recent coins
+    localStorage.setItem("er-c-index", JSON.stringify(idx.slice(0, 6)));
+    localStorage.setItem("er-c:" + key, JSON.stringify({ at: c.at, r: c.rows.map(x => [x.time, x.open, x.high, x.low, x.close, x.volume]) }));
+  } catch {}
+}
+async function getCandles(pair, gran) {
+  const key = pair + "|" + gran, c = cacheGet(key);
+  if (c && Date.now() - c.at < (gran === 60 ? 20000 : 300000)) return c.rows;
+  if (c) { // only the newest batch can have changed, so fetch just that
+    const latest = await fetchCoinbase(pair, gran, 1), m = new Map(c.rows.map(x => [x.time, x]));
+    latest.forEach(x => m.set(x.time, x));
+    const rows = [...m.values()].sort((a, b) => a.time - b.time); cachePut(key, { rows, at: Date.now() }); return rows;
+  }
+  const rows = await fetchCoinbase(pair, gran, FULL_PAGES[gran] || 1); cachePut(key, { rows, at: Date.now() }); return rows;
 }
 
 async function fetchGecko(pair) {
@@ -533,15 +567,21 @@ async function fetchGecko(pair) {
   if (!r.ok) throw new Error(`CoinGecko returned ${r.status}`);
   return (await r.json()).map(([t, open, high, low, close]) => ({ time: Math.floor(t / 1000), open, high, low, close, volume: 0 }));
 }
+let loadSeq = 0;
 async function load(quiet) {
-  if (!quiet) setStatus("Loading " + state.pair + "…");
+  const seq = ++loadSeq, pair = state.pair, cfg = CANDLES[state.tf] || CANDLES[604800];
+  if (!quiet) setStatus("Loading " + pair + "…");
   try {
     try {
-      const cfg = CANDLES[state.tf] || CANDLES[604800];
-      const raw = await fetchCoinbase(state.pair, cfg.gran, cfg.pages);
+      const all = await getCandles(pair, cfg.gran);
+      if (seq !== loadSeq) return; // a newer coin or candle size was picked meanwhile
+      const from = all[all.length - 1].time - cfg.pages * 300 * cfg.gran, raw = all.filter(c => c.time > from);
       state.candles = cfg.group ? combine(raw, cfg.group) : raw; state.source = "Coinbase";
     }
-    catch (e) { state.candles = await fetchGecko(state.pair); state.source = "CoinGecko (4h, no volume)"; setStatus(e.message + ", using CoinGecko", true); }
+    catch (e) {
+      const g = await fetchGecko(pair); if (seq !== loadSeq) return;
+      state.candles = g; state.source = "CoinGecko (4h, no volume)"; setStatus(e.message + ", using CoinGecko", true);
+    }
     if (!state.source.startsWith("CSV")) lastPrices[state.pair] = state.candles[state.candles.length - 1].close;
     render(); fillAlertForm(); renderAlerts();
     setStatus(`${state.source} · ${state.candles.length} candles · updated ${new Date().toLocaleTimeString()}`);
@@ -964,7 +1004,7 @@ function choose(pair, tf) {
   if (tf) state.tf = tf;
   $("pair").value = ""; closeResults(); markActive(); updateStar();
   try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf })); } catch {}
-  load().then(() => charts.forEach(c => c.timeScale().fitContent()));
+  return firstChart = load().then(() => charts.forEach(c => c.timeScale().fitContent()));
 }
 $("presets").onclick = e => e.target.dataset.p && choose(e.target.dataset.p);
 $("tfs").onclick = e => e.target.dataset.tf && choose(null, +e.target.dataset.tf);
@@ -1194,7 +1234,7 @@ $("email-on").onchange = async () => {
   else toast($("email-on").checked ? "Email alerts on" : "Email alerts off");
 };
 
-let booted = false;
+let booted = false, firstChart = Promise.resolve();
 function bootApp() {
   if (booted) { checkAlerts(); return; }
   booted = true;
@@ -1250,7 +1290,7 @@ function showApp() {
   $("auth").hidden = true; $("app").hidden = false;
   $("acct-email").textContent = user.email;
   bootApp(); syncPush();
-  Promise.all([loadWatch(), loadHoldings()]).then(() => { refreshMarket(); refreshSparks(watch); });
+  Promise.all([loadWatch(), loadHoldings(), firstChart]).then(() => { refreshMarket(); refreshSparks(watch); });
   loadEmailPref(); syncAlertForm();
   sb.rpc("is_admin").then(({ data }) => { $("admin-link").hidden = data !== true; });
   try { if (localStorage.getItem("er-view") === "portfolio") showView("portfolio"); } catch {}
