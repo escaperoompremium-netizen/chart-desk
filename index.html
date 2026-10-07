@@ -170,6 +170,24 @@ table.pf button { padding: 3px 8px; font-size: 11px; }
 .ranges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; padding: 8px 4px 2px; border-top: 1px solid var(--line); margin-top: 6px; }
 .ranges span { font: 600 10px var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
 .ranges button { padding: 5px 12px; font-family: var(--mono); }
+#market { margin-right: 4px; }
+.hmHead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 4px 0 10px; }
+.hmHead h2 { margin: 0; flex: 1 1 auto; }
+.treemap { position: relative; overflow: hidden; height: clamp(420px, 56vw, 640px); padding: 0; }
+.tm { position: absolute; box-sizing: border-box; border: 1px solid var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; overflow: hidden; cursor: pointer; color: var(--fg); font-family: var(--mono); line-height: 1.15; padding: 2px; }
+.tm:hover { outline: 2px solid var(--fg); outline-offset: -2px; z-index: 1; }
+.tm b { font-weight: 600; }
+.tm small { opacity: .85; }
+.hmScale { display: flex; align-items: center; gap: 8px; font: 11px var(--mono); color: var(--muted); margin: 8px 0 22px; }
+.hmScale i { flex: 0 1 220px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--down), var(--line), var(--up)); }
+.fxgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+.fxt { border-radius: 6px; padding: 10px; cursor: pointer; font-family: var(--mono); border: 1px solid var(--line); text-align: left; color: var(--fg); }
+.fxt:hover { border-color: var(--fg); }
+.fxt b { display: block; font-size: 14px; }
+.fxt span { display: block; font-size: 11px; color: var(--muted); font-family: var(--ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fxt i { display: block; font-style: normal; font-weight: 600; margin-top: 4px; }
+#tfs button:disabled { opacity: .35; cursor: not-allowed; }
 footer { margin-top: 16px; font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; }
 .sub { color: var(--muted); font-size: 12px; }
 .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
@@ -300,6 +318,7 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
 
 <nav class="viewTabs" id="view-tabs">
   <button type="button" data-view="charts" class="on">Charts</button>
+  <button type="button" data-view="heatmap">Heatmap</button>
   <button type="button" data-view="portfolio">Portfolio</button>
   <a id="admin-link" href="admin.html" hidden>Admin</a>
 </nav>
@@ -312,6 +331,7 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
 <datalist id="pairs"></datalist>
 <div class="movers" id="movers" aria-label="Top movers in the last 24 hours"><span class="moversLabel">Top movers 24h</span></div>
 <div class="bar">
+  <div class="group" id="market" role="tablist" aria-label="Market"><button type="button" data-m="crypto" class="on">Crypto</button><button type="button" data-m="fx">Forex</button></div>
   <div class="group" id="presets"></div>
   <span class="sep"></span>
   <label class="chk"><input type="checkbox" id="o-ema20" checked><i style="background:var(--accent)"></i>EMA 20</label>
@@ -384,6 +404,20 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
 </div>
 
 </div>
+
+<section id="view-heatmap" hidden>
+  <div class="hmHead">
+    <h2>Crypto · top 100 by market cap</h2>
+    <div class="group" id="hm-period"><button type="button" data-hp="24h" class="on">24h</button><button type="button" data-hp="7d">7d</button></div>
+    <label class="chk"><input type="checkbox" id="hm-stable" checked> Hide stablecoins</label>
+    <span class="status" id="hm-status"></span>
+  </div>
+  <div class="panel treemap" id="hm-crypto" aria-label="Crypto heatmap"></div>
+  <div class="hmScale"><span id="hm-lo">−8%</span><i></i><span id="hm-hi">+8%</span><span>· tile size = market cap · click a tile to open its chart</span></div>
+  <div class="hmHead"><h2>Forex · currencies vs US dollar</h2><span class="status" id="fx-status"></span></div>
+  <div class="fxgrid" id="hm-fx" aria-label="Forex heatmap"></div>
+  <p class="note">Crypto data from CoinGecko, refreshed every 2 minutes. Forex uses the European Central Bank's daily reference rates (published around 16:00 CET on working days). Green means the currency gained against the US dollar.</p>
+</section>
 
 <section id="view-portfolio" hidden>
   <div class="pfTiles">
@@ -549,7 +583,32 @@ function cachePut(key, c) {
     localStorage.setItem("er-c:" + key, JSON.stringify({ at: c.at, r: c.rows.map(x => [x.time, x.open, x.high, x.low, x.close, x.volume]) }));
   } catch {}
 }
+/* ---------- forex: European Central Bank daily reference rates via Frankfurter ---------- */
+const isFx = p => p.startsWith("FX:");
+const pretty = p => isFx(p) ? p.slice(3) : p;
+const FX_PRESETS = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD", "EUR/GBP", "EUR/JPY", "GBP/JPY"].map(x => "FX:" + x);
+const FXAPI = "https://api.frankfurter.dev/v1/";
+async function fetchFx(pair, since) {
+  const [b, q] = pair.slice(3).split("/");
+  const r = await fetch(`${FXAPI}${since}..?from=${b}&to=${q}`);
+  if (!r.ok) throw new Error(`No exchange rates for ${pair.slice(3)}`);
+  const days = Object.entries((await r.json()).rates || {}).map(([d, v]) => [Date.parse(d + "T00:00:00Z") / 1000, v[q]]).filter(x => x[1] > 0);
+  if (!days.length) throw new Error(`No exchange rates for ${pair.slice(3)}`);
+  // daily close only, so each candle opens at the previous day's close
+  return days.map(([t, c], i) => { const o = i ? days[i - 1][1] : c; return { time: t, open: o, high: Math.max(o, c), low: Math.min(o, c), close: c, volume: 0 }; });
+}
+async function getFxCandles(pair) {
+  const key = pair + "|86400", c = cacheGet(key);
+  if (c && Date.now() - c.at < 1800000) return c.rows;
+  let rows;
+  if (c) { // only recent days can be new
+    const recent = await fetchFx(pair, new Date((c.rows[c.rows.length - 1].time - 10 * 86400) * 1000).toISOString().slice(0, 10)), m = new Map(c.rows.map(x => [x.time, x]));
+    recent.slice(1).forEach(x => m.set(x.time, x)); rows = [...m.values()].sort((a, b) => a.time - b.time);
+  } else rows = await fetchFx(pair, "2008-01-01");
+  cachePut(key, { rows, at: Date.now() }); return rows;
+}
 async function getCandles(pair, gran) {
+  if (isFx(pair)) return getFxCandles(pair);
   const key = pair + "|" + gran, c = cacheGet(key);
   if (c && Date.now() - c.at < (gran === 60 ? 20000 : 300000)) return c.rows;
   if (c) { // only the newest batch can have changed, so fetch just that
@@ -576,9 +635,10 @@ async function load(quiet) {
       const all = await getCandles(pair, cfg.gran);
       if (seq !== loadSeq) return; // a newer coin or candle size was picked meanwhile
       const from = all[all.length - 1].time - cfg.pages * 300 * cfg.gran, raw = all.filter(c => c.time > from);
-      state.candles = cfg.group ? combine(raw, cfg.group) : raw; state.source = "Coinbase";
+      state.candles = cfg.group ? combine(raw, cfg.group) : raw; state.source = isFx(pair) ? "European Central Bank daily rates" : "Coinbase";
     }
     catch (e) {
+      if (isFx(pair)) throw e;
       const g = await fetchGecko(pair); if (seq !== loadSeq) return;
       state.candles = g; state.source = "CoinGecko (4h, no volume)"; setStatus(e.message + ", using CoinGecko", true);
     }
@@ -708,7 +768,7 @@ function analyse() {
   const perYear = 31536000 / (cs[1] ? cs[1].time - cs[0].time : state.tf);
   const tfLabel = (TFS.find(t => t[1] === state.tf) || ["custom"])[0];
 
-  $("title").textContent = `${state.pair} · ${state.source.startsWith("CSV") ? "imported" : tfLabel} candles`;
+  $("title").textContent = `${pretty(state.pair)} · ${state.source.startsWith("CSV") ? "imported" : tfLabel} candles`;
   $("last").textContent = fmt(last);
   $("chg").className = "chg " + (chg >= 0 ? "upc" : "downc");
   $("chg").textContent = `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}% over ${cs.length} candles`;
@@ -823,6 +883,7 @@ function renderAlerts() {
 }
 
 function fillAlertForm() {
+  if (isFx(state.pair)) return; // alerts are for crypto for now
   $("al-coin").value = state.pair;
   if ($("al-kind").value === "price") { const now = lastPrices[state.pair] ?? calc.last; $("al-price").placeholder = now ? `Now ${fmt(now)}` : "Price in USD"; }
 }
@@ -872,7 +933,7 @@ async function checkAlerts() {
     else if (a.repeat && a.lastHit && a.id in lastHitBefore && a.lastHit !== lastHitBefore[a.id]) fire(a);
   }
   const pairs = [...new Set(alerts.filter(a => !a.hit).map(a => a.pair))];
-  const fetchPairs = state.source.startsWith("CSV") ? pairs : [...new Set([...pairs, state.pair])];
+  const fetchPairs = state.source.startsWith("CSV") || isFx(state.pair) ? pairs : [...new Set([...pairs, state.pair])];
   await Promise.all(fetchPairs.map(async pair => {
     try {
       const r = await fetch(`https://api.exchange.coinbase.com/products/${encodeURIComponent(pair)}/ticker`);
@@ -993,14 +1054,24 @@ async function turnOffPush() {
 $("push-btn").onclick = () => pushOn ? turnOffPush() : turnOnPush();
 
 function setStatus(t, err) { $("status").textContent = t; $("status").className = "status" + (err ? " err" : ""); }
-$("presets").innerHTML = PRESETS.map(p => `<button data-p="${p}">${p.split("-")[0]}</button>`).join("");
+let market = "crypto";
+function renderPresets() {
+  $("presets").innerHTML = (market === "fx" ? FX_PRESETS : PRESETS).map(p => `<button data-p="${p}">${market === "fx" ? p.slice(3) : p.split("-")[0]}</button>`).join("");
+  document.querySelectorAll("#market [data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === market));
+  markActive();
+}
+$("market").onclick = e => { const b = e.target.closest("[data-m]"); if (!b || b.dataset.m === market) return; choose(b.dataset.m === "fx" ? FX_PRESETS[0] : PRESETS[0]); }; // the switch follows the chart that opens
+renderPresets();
 $("tfs").innerHTML = TFS.map(([l, g]) => `<button data-tf="${g}">${l}</button>`).join("");
 function markActive() {
   document.querySelectorAll("[data-p]").forEach(b => b.classList.toggle("on", b.dataset.p === state.pair));
-  document.querySelectorAll("[data-tf]").forEach(b => b.classList.toggle("on", +b.dataset.tf === state.tf));
+  document.querySelectorAll("[data-tf]").forEach(b => { b.classList.toggle("on", +b.dataset.tf === state.tf); b.disabled = isFx(state.pair) && +b.dataset.tf < 86400; b.title = b.disabled ? "Forex rates are daily, so the smallest candle is 1W" : ""; });
+  const m = isFx(state.pair) ? "fx" : "crypto";
+  if (typeof market !== "undefined" && m !== market) { market = m; renderPresets(); }
 }
 function choose(pair, tf) {
-  if (pair) { state.pair = pair.toUpperCase().trim(); if (!state.pair.includes("-")) state.pair += "-USD"; }
+  if (pair) { state.pair = pair.toUpperCase().trim(); if (!state.pair.includes("-") && !isFx(state.pair)) state.pair += "-USD"; }
+  if (isFx(state.pair) && state.tf < 86400) state.tf = 604800; // forex rates are daily, so no 1m/3m
   if (tf) state.tf = tf;
   $("pair").value = ""; closeResults(); markActive(); updateStar();
   try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf })); } catch {}
@@ -1027,12 +1098,18 @@ let coins = PRESETS.map(id => ({ id, sym: id.split("-")[0], name: "" })), hits =
 Promise.all([
   fetch("https://api.exchange.coinbase.com/products").then(r => r.json()),
   fetch("https://api.exchange.coinbase.com/currencies").then(r => r.json()).catch(() => []),
-]).then(([products, currencies]) => {
+  fetch(FXAPI + "currencies").then(r => r.json()).catch(() => ({})),
+]).then(([products, currencies, fxNames]) => {
   const names = Object.fromEntries(currencies.map(c => [c.id, c.name]));
   coins = products.filter(p => p.quote_currency === "USD" && p.status === "online" && !p.trading_disabled)
     .map(p => ({ id: p.id, sym: p.base_currency, name: names[p.base_currency] || "" }));
-  $("pairs").innerHTML = coins.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
-  $("pair").placeholder = `Search ${coins.length} coins by name or symbol…`;
+  const fxList = Object.keys(fxNames).filter(c => c !== "USD").flatMap(c => [
+    { id: `FX:${c}/USD`, sym: `${c}/USD`, name: `${fxNames[c]} / US Dollar`, fx: true },
+    { id: `FX:USD/${c}`, sym: `USD/${c}`, name: `US Dollar / ${fxNames[c]}`, fx: true }]);
+  if (fxNames.EUR && fxNames.GBP) fxList.push({ id: "FX:EUR/GBP", sym: "EUR/GBP", name: "Euro / British Pound", fx: true }, { id: "FX:EUR/JPY", sym: "EUR/JPY", name: "Euro / Japanese Yen", fx: true }, { id: "FX:GBP/JPY", sym: "GBP/JPY", name: "British Pound / Japanese Yen", fx: true });
+  coins = coins.concat(fxList);
+  $("pairs").innerHTML = coins.filter(c => !c.fx).map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+  $("pair").placeholder = `Search ${coins.filter(c => !c.fx).length} coins and ${coins.filter(c => c.fx).length} currency pairs…`;
 }).catch(() => {});
 
 function searchCoins(q) {
@@ -1078,7 +1155,7 @@ async function loadWatch() {
 }
 function updateStar() {
   const on = watch.includes(state.pair), b = $("star");
-  b.hidden = state.source.startsWith("CSV");
+  b.hidden = state.source.startsWith("CSV") || isFx(state.pair);
   b.setAttribute("aria-pressed", on); b.textContent = on ? "★ Watching" : "☆ Watch";
   [...$("wl").children].forEach(li => li.classList.toggle("cur", li.dataset.p === state.pair));
 }
@@ -1192,9 +1269,75 @@ $("pf-table").onclick = async e => {
     holdings = holdings.filter(x => x.pair !== b.dataset.rm); renderPortfolio();
   }
 };
+/* ---------- heatmaps ---------- */
+const STABLES = new Set(["usdt", "usdc", "dai", "fdusd", "usde", "usds", "tusd", "pyusd", "usdd", "busd", "usd1", "usdtb", "bsc-usd", "usdf", "gho", "rlusd", "susds", "susde", "usdg", "lusd", "frax", "usdx", "eurc", "xaut", "paxg"]);
+let hmData = null, hmPeriod = "24h", hmTimer = null, fxHm = null;
+function heatColor(c, span) {
+  if (c == null || Math.abs(c) < span * 0.02) return "var(--line)";
+  const t = Math.min(1, Math.abs(c) / span);
+  return `color-mix(in srgb, ${c > 0 ? "var(--up)" : "var(--down)"} ${Math.round(28 + t * 62)}%, var(--panel))`;
+}
+function squarify(items, x, y, w, h, out = []) {
+  if (!items.length || w <= 0 || h <= 0) return out;
+  const short = Math.min(w, h); let row = [], sum = 0, worst = Infinity, i = 0;
+  for (; i < items.length; i++) {
+    const s = sum + items[i].a, th = s / short, cand = [...row, items[i]];
+    const wr = Math.max(...cand.map(r => Math.max(th * th / r.a, r.a / (th * th))));
+    if (row.length && wr > worst) break;
+    row = cand; sum = s; worst = wr;
+  }
+  const th = sum / short; let off = 0;
+  for (const r of row) { const len = r.a / th; out.push(w >= h ? { ...r, x, y: y + off, w: th, h: len } : { ...r, x: x + off, y, w: len, h: th }); off += len; }
+  return w >= h ? squarify(items.slice(i), x + th, y, w - th, h, out) : squarify(items.slice(i), x, y + th, w, h - th, out);
+}
+function renderCryptoHeatmap() {
+  const box = $("hm-crypto"); if (!hmData || !box.clientWidth) return;
+  const key = hmPeriod === "7d" ? "price_change_percentage_7d_in_currency" : "price_change_percentage_24h";
+  const list = hmData.filter(c => c.market_cap > 0 && !($("hm-stable").checked && STABLES.has(c.symbol))).slice(0, 100);
+  const W = box.clientWidth, H = box.clientHeight, total = list.reduce((t, c) => t + c.market_cap, 0), span = hmPeriod === "7d" ? 15 : 8;
+  $("hm-lo").textContent = `−${span}%`; $("hm-hi").textContent = `+${span}%`;
+  const tiles = squarify(list.map(c => ({ c, a: c.market_cap / total * W * H })), 0, 0, W, H);
+  box.innerHTML = tiles.map(({ c, x, y, w, h }) => {
+    const ch = c[key], sym = c.symbol.toUpperCase(), big = Math.min(w, h), fs = Math.max(9, Math.min(26, big / 4));
+    const label = big < 22 || w < 30 ? "" : `<b style="font-size:${fs}px">${sym}</b>${big > 44 ? `<small style="font-size:${Math.max(9, fs * 0.6)}px">${ch == null ? "" : (ch >= 0 ? "+" : "") + ch.toFixed(2) + "%"}</small>` : ""}${big > 110 ? `<small style="font-size:${Math.max(9, fs * 0.45)}px">$${fmt(c.current_price)}</small>` : ""}`;
+    return `<div class="tm" data-sym="${sym}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${heatColor(ch, span)}" title="${c.name.replace(/"/g, "")} · $${fmt(c.current_price)} · ${ch == null ? "—" : (ch >= 0 ? "+" : "") + ch.toFixed(2) + "%"} · market cap $${Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(c.market_cap)}">${label}</div>`;
+  }).join("");
+}
+async function loadCryptoHeatmap() {
+  try {
+    const r = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=130&page=1&price_change_percentage=24h,7d");
+    if (!r.ok) throw new Error(r.status === 429 ? "CoinGecko is busy, retrying shortly" : "CoinGecko returned " + r.status);
+    hmData = await r.json(); renderCryptoHeatmap();
+    $("hm-status").textContent = "Updated " + new Date().toLocaleTimeString([], { timeStyle: "short" });
+  } catch (e) { $("hm-status").textContent = e.message; }
+}
+async function loadFxHeatmap() {
+  try {
+    const since = new Date(Date.now() - 12 * 86400000).toISOString().slice(0, 10);
+    const [rates, names] = await Promise.all([fetch(`${FXAPI}${since}..?from=USD`).then(r => r.json()), fetch(FXAPI + "currencies").then(r => r.json())]);
+    const days = Object.keys(rates.rates).sort(), d1 = days[days.length - 1], d0 = days[days.length - 2];
+    fxHm = Object.keys(rates.rates[d1]).map(c => ({ c, name: names[c] || c, ch: (rates.rates[d0][c] / rates.rates[d1][c] - 1) * 100 })).sort((a, b) => b.ch - a.ch);
+    $("hm-fx").innerHTML = fxHm.map(f => `<button type="button" class="fxt" data-fx="${f.c}" style="background:${heatColor(f.ch, 1)}"><b>${f.c}</b><span>${f.name}</span><i>${f.ch >= 0 ? "+" : ""}${f.ch.toFixed(2)}%</i></button>`).join("");
+    const nice = d => new Date(d + "T12:00:00Z").toLocaleDateString([], { day: "numeric", month: "short" });
+    $("fx-status").textContent = `${nice(d1)} vs ${nice(d0)}`;
+  } catch { $("fx-status").textContent = "Couldn't load exchange rates. Try again shortly."; }
+}
+$("hm-crypto").onclick = e => {
+  const t = e.target.closest(".tm"); if (!t) return;
+  const id = t.dataset.sym + "-USD";
+  if (!coins.some(c => c.id === id)) { toast(`${t.dataset.sym} isn't traded on Coinbase, so there's no chart for it here.`); return; }
+  showView("charts"); choose(id);
+};
+$("hm-fx").onclick = e => { const t = e.target.closest("[data-fx]"); if (t) { showView("charts"); choose(`FX:${t.dataset.fx}/USD`); } };
+$("hm-period").onclick = e => { const b = e.target.closest("[data-hp]"); if (!b) return; hmPeriod = b.dataset.hp; document.querySelectorAll("#hm-period button").forEach(x => x.classList.toggle("on", x === b)); renderCryptoHeatmap(); };
+$("hm-stable").onchange = renderCryptoHeatmap;
+new ResizeObserver(() => renderCryptoHeatmap()).observe($("hm-crypto"));
+
 function showView(v) {
   document.querySelectorAll("#view-tabs [data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
-  $("view-charts").hidden = v !== "charts"; $("view-portfolio").hidden = v !== "portfolio";
+  $("view-charts").hidden = v !== "charts"; $("view-portfolio").hidden = v !== "portfolio"; $("view-heatmap").hidden = v !== "heatmap";
+  clearInterval(hmTimer);
+  if (v === "heatmap") { loadCryptoHeatmap(); loadFxHeatmap(); hmTimer = setInterval(loadCryptoHeatmap, 120000); }
   if (v === "portfolio") { renderPortfolio(); refreshStats(holdings.map(h => h.pair)).then(renderPortfolio); }
   try { localStorage.setItem("er-view", v); } catch {}
 }
@@ -1293,7 +1436,7 @@ function showApp() {
   Promise.all([loadWatch(), loadHoldings(), firstChart]).then(() => { refreshMarket(); refreshSparks(watch); });
   loadEmailPref(); syncAlertForm();
   sb.rpc("is_admin").then(({ data }) => { $("admin-link").hidden = data !== true; });
-  try { if (localStorage.getItem("er-view") === "portfolio") showView("portfolio"); } catch {}
+  try { const v = localStorage.getItem("er-view"); if (v === "portfolio" || v === "heatmap") showView(v); } catch {}
 }
 document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { setMode(b.dataset.go); $("auth-form").scrollIntoView({ behavior: "smooth", block: "center" }); $("auth-email").focus({ preventScroll: true }); });
 $("auth-tabs").onclick = e => e.target.dataset.mode && setMode(e.target.dataset.mode);
