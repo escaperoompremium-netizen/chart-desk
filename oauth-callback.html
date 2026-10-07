@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Connecting Coinbase · Escape Room Charts</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0e1116;color:#e6e9ee;font:15px system-ui,sans-serif}</style>
+</head>
+<body>
+<p>Connecting your Coinbase account…</p>
+<script>
+// Coinbase sends people back here; hand the one-time code to the main page and go back to the portfolio.
+const p = new URLSearchParams(location.search);
+try { sessionStorage.setItem("cb-return", JSON.stringify({ code: p.get("code"), state: p.get("state"), error: p.get("error") })); } catch (e) {}
+location.replace("./#portfolio");
+</script>
+</body>
+</html>
