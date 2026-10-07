@@ -3,27 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chart Desk</title>
+<title>Escape Room Charts</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 /* Layout: trading-desk grid — controls bar, chart stack (price / RSI / MACD) left, analysis rail right */
 :root {
   --bg: #0e1116; --panel: #151a21; --line: #232a34; --fg: #e6e9ee; --muted: #8a94a3;
-  --accent: #f2b544; --up: #2fbf8f; --down: #ef5a5a; --blue: #5aa9f2; --violet: #b18cf2;
-  --ui: "Manrope", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --accent: #e5488f; --up: #2fbf8f; --down: #ef5a5a; --blue: #5aa9f2; --violet: #b18cf2;
+  --brand: "Unbounded", "Manrope", system-ui, sans-serif; --ui: "Manrope", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
   :root { --bg: #f5f6f8; --panel: #ffffff; --line: #e1e5ea; --fg: #151a21; --muted: #5d6775;
-          --accent: #c98a0e; --up: #12936a; --down: #d23c3c; --blue: #2a7fd4; --violet: #7e54d6; color-scheme: light; }
+          --accent: #c42a72; --up: #12936a; --down: #d23c3c; --blue: #2a7fd4; --violet: #7e54d6; color-scheme: light; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--ui); padding: 16px; }
 header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 14px; }
-h1 { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: -.01em; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand svg { width: 30px; height: 30px; flex: none; }
+h1 { font: 800 19px/1 var(--brand); margin: 0; letter-spacing: .04em; text-transform: uppercase; }
 h1 span { color: var(--accent); }
+h1 small { display: block; font: 600 9px var(--ui); letter-spacing: .32em; color: var(--muted); margin-top: 4px; }
+footer { margin-top: 16px; font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; }
 .sub { color: var(--muted); font-size: 12px; }
 .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .group { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -32,9 +36,10 @@ button, input, select, label.btn {
   border-radius: 6px; padding: 6px 10px; cursor: pointer;
 }
 button:hover, label.btn:hover { border-color: var(--muted); }
-button.on { background: var(--accent); color: #111; border-color: var(--accent); }
+button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-input#pair { width: 110px; font-family: var(--mono); text-transform: uppercase; cursor: text; }
+input#pair { width: 150px; font-family: var(--mono); text-transform: uppercase; cursor: text; }
+@media (max-width: 700px) { #presets { flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 4px; } #presets button { flex: none; } }
 .sep { width: 1px; height: 22px; background: var(--line); }
 .chk { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .chk i { width: 10px; height: 3px; display: inline-block; border-radius: 2px; }
@@ -75,13 +80,16 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
 </head>
 <body>
 <header>
-  <h1>Chart<span>Desk</span></h1>
-  <span class="sub">Live crypto chart analyser · Coinbase market data · technical indicators</span>
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="7" fill="var(--accent)"/><circle cx="16" cy="13" r="5" fill="var(--bg)"/><path d="M13.6 15.5h4.8l1.6 9h-8z" fill="var(--bg)"/></svg>
+    <h1>Escape <span>Room</span><small>Crypto charts</small></h1>
+  </div>
+  <span class="sub">Live crypto chart analyser · 400 coins · Coinbase market data · technical indicators</span>
 </header>
 
 <div class="bar">
   <div class="group" id="presets"></div>
-  <input id="pair" value="BTC-USD" aria-label="Trading pair" spellcheck="false">
+  <input id="pair" value="BTC-USD" list="pairs" placeholder="Search coins" aria-label="Search any coin" spellcheck="false" autocomplete="off"><datalist id="pairs"></datalist>
   <button id="go">Load</button>
   <span class="sep"></span>
   <div class="group" id="tfs"></div>
@@ -127,11 +135,13 @@ table.lv td:last-child { text-align: right; color: var(--muted); }
   </aside>
 </div>
 
+<footer><span>© Escape Room</span><span>Market data from Coinbase. Indicators describe past price action. Not financial advice.</span></footer>
+
 <script>
 const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const PRESETS = ["BTC-USD","ETH-USD","SOL-USD","XRP-USD","DOGE-USD","ADA-USD","AVAX-USD","LINK-USD"];
-const GECKO = { BTC:"bitcoin", ETH:"ethereum", SOL:"solana", XRP:"ripple", DOGE:"dogecoin", ADA:"cardano", AVAX:"avalanche-2", LINK:"chainlink", LTC:"litecoin", DOT:"polkadot" };
+const PRESETS = ["BTC","ETH","SOL","XRP","DOGE","ADA","AVAX","LINK","LTC","DOT","SHIB","PEPE","SUI","BCH","UNI","NEAR","XLM","HBAR","TON","AAVE"].map(c => c + "-USD");
+const GECKO = { BTC:"bitcoin", ETH:"ethereum", SOL:"solana", XRP:"ripple", DOGE:"dogecoin", ADA:"cardano", AVAX:"avalanche-2", LINK:"chainlink", LTC:"litecoin", DOT:"polkadot", SHIB:"shiba-inu", PEPE:"pepe", SUI:"sui", BCH:"bitcoin-cash", UNI:"uniswap", NEAR:"near", XLM:"stellar", HBAR:"hedera-hashgraph", TON:"the-open-network", AAVE:"aave" };
 const TFS = [["15m",900],["1h",3600],["6h",21600],["1D",86400]];
 let state = { pair: "BTC-USD", tf: 3600, candles: [], source: "" };
 let timer = null;
@@ -274,7 +284,7 @@ charts.forEach(src => src.timeScale().subscribeVisibleLogicalRangeChange(r => {
 new ResizeObserver(() => charts.forEach((c, i) => { const el = [$("main"), $("rsi"), $("macd")][i]; c.applyOptions({ width: el.clientWidth }); })).observe($("main"));
 
 let srLines = [], calc = {};
-const fmt = p => p == null ? "—" : p >= 1000 ? p.toLocaleString(undefined, { maximumFractionDigits: 2 }) : p >= 1 ? p.toFixed(p >= 100 ? 2 : 4) : p.toPrecision(4);
+const fmt = p => p == null ? "—" : p >= 1000 ? p.toLocaleString(undefined, { maximumFractionDigits: 2 }) : p >= 1 ? p.toFixed(p >= 100 ? 2 : 4) : p.toPrecision(4).replace(/0+$/, "");
 // nulls become whitespace bars so every pane has the same bar count and stays aligned when synced
 const line = (arr, cs) => arr.map((v, i) => v == null ? { time: cs[i].time } : { time: cs[i].time, value: v });
 
@@ -283,6 +293,13 @@ function render() {
   const e20 = ema(c, 20), e50 = ema(c, 50), s200 = sma(c, 200), bb = bollinger(c), r = rsi(c), m = macd(c), a = atr(cs);
   calc = { cs, c, e20, e50, s200, bb, r, m, a };
 
+  // sub-cent coins (SHIB, PEPE) need more decimals than the default 2
+  const dec = p => Math.min(10, Math.max(2, Math.ceil(-Math.log10(p)) + 3));
+  const pf = d => ({ type: "price", precision: d, minMove: 10 ** -d });
+  const priceFmt = pf(dec(c[c.length - 1]));
+  ["candle","ema20","ema50","sma200","bbU","bbL"].forEach(k => S[k].applyOptions({ priceFormat: priceFmt }));
+  const mMax = Math.max(...m.line.filter(v => v != null).map(Math.abs), 1e-12);
+  ["macdH","macdL","macdS"].forEach(k => S[k].applyOptions({ priceFormat: pf(dec(mMax)) }));
   S.candle.setData(cs);
   S.vol.setData(cs.map(x => ({ time: x.time, value: x.volume, color: (x.close >= x.open ? css("--up") : css("--down")) + "55" })));
   S.ema20.setData(line(e20, cs)); S.ema50.setData(line(e50, cs)); S.sma200.setData(line(s200, cs));
@@ -402,7 +419,7 @@ function markActive() {
   document.querySelectorAll("[data-tf]").forEach(b => b.classList.toggle("on", +b.dataset.tf === state.tf));
 }
 function choose(pair, tf) {
-  if (pair) state.pair = pair.toUpperCase().trim();
+  if (pair) { state.pair = pair.toUpperCase().trim(); if (!state.pair.includes("-")) state.pair += "-USD"; }
   if (tf) state.tf = tf;
   $("pair").value = state.pair; markActive();
   try { localStorage.setItem("chartdesk", JSON.stringify({ pair: state.pair, tf: state.tf })); } catch {}
@@ -426,6 +443,13 @@ $("csv").onchange = e => {
 };
 
 try { const s = JSON.parse(localStorage.getItem("chartdesk")); if (s) Object.assign(state, s); } catch {}
+fetch("https://api.exchange.coinbase.com/products").then(r => r.json()).then(list => {
+  const ids = list.filter(p => p.quote_currency === "USD" && p.status === "online" && !p.trading_disabled).map(p => p.id).sort();
+  $("pairs").innerHTML = ids.map(id => `<option value="${id}">`).join("");
+  $("pair").placeholder = `Search ${ids.length} coins`;
+}).catch(() => {});
+$("pair").onchange = () => $("pair").value && choose($("pair").value);
+$("pair").onfocus = () => $("pair").select();
 choose(); schedule();
 </script>
 </body>

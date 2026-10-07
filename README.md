@@ -1,4 +1,4 @@
-# ChartDesk
+# Escape Room Charts
 
 Live crypto chart analyser: candlesticks from Coinbase (CoinGecko fallback), EMA/SMA/Bollinger overlays,
 RSI and MACD panes, support/resistance detection and a plain-English technical read.
